@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 app = FastAPI(
     title="SupplyHub API",
-    description="API para la plataforma B2B SupplyHub.",
+    description="API for the SupplyHub B2B platform.    ",
     version="0.1.0",
 )
 

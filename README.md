@@ -1,119 +1,119 @@
 # SupplyHub
 
-SupplyHub es una plataforma B2B donde empresas proveedoras pueden administrar sus productos e inventario, mientras empresas compradoras pueden buscar productos y crear pedidos.
+SupplyHub is a B2B platform where supplier organizations can manage their products and inventory, while buyer organizations can search for products and create orders.
 
-## Estado del proyecto
+## Project status
 
-El proyecto se encuentra actualmente en su etapa inicial de planificación y definición de arquitectura.
+The project is currently in its initial planning and architecture definition stage.
 
-## Problema
+## Problem
 
-Muchas empresas necesitan administrar catálogos, existencias y pedidos entre organizaciones.
+Many companies need to manage catalogs, inventory, and orders between organizations.
 
-Una tienda online tradicional normalmente está pensada para compradores individuales. SupplyHub estará orientado a relaciones entre empresas, donde pueden existir:
+A traditional online store is usually designed for individual consumers. SupplyHub is focused on business-to-business relationships, where the system must support:
 
-* Diferentes organizaciones.
-* Diferentes empleados dentro de cada organización.
-* Roles y permisos.
-* Múltiples almacenes.
-* Precios específicos para determinados clientes.
-* Reservas de inventario.
-* Auditoría de operaciones.
-* Búsquedas avanzadas de productos.
+* Multiple organizations.
+* Multiple employees within each organization.
+* Roles and permissions.
+* Multiple warehouses.
+* Customer-specific pricing.
+* Inventory reservations.
+* Operation auditing.
+* Advanced product search.
 
-## Objetivo
+## Goal
 
-El objetivo de este proyecto es construir una aplicación profesional que permita demostrar conocimientos de:
+The goal of this project is to build a professional application that demonstrates knowledge of:
 
-* Desarrollo frontend.
-* Desarrollo backend.
-* Diseño de APIs.
-* Arquitectura de software.
-* Bases de datos relacionales.
-* Bases de datos documentales.
-* Motores de búsqueda.
-* Pruebas automatizadas.
+* Frontend development.
+* Backend development.
+* API design.
+* Software architecture.
+* Relational databases.
+* Document databases.
+* Search engines.
+* Automated testing.
 * Docker.
-* Integración y despliegue continuo.
-* Documentación técnica.
+* Continuous integration and continuous deployment.
+* Technical documentation.
 
-## Tipos de usuario
+## User roles
 
-### Administrador de plataforma
+### Platform administrator
 
-Administra el funcionamiento general de SupplyHub.
+Manages the overall SupplyHub platform.
 
-### Administrador de organización
+### Organization administrator
 
-Administra los usuarios, roles y configuraciones de una empresa.
+Manages users, roles, and settings for an organization.
 
-### Gestor de catálogo
+### Catalog manager
 
-Crea, modifica y desactiva productos.
+Creates, updates, and deactivates products.
 
-### Operador de almacén
+### Warehouse operator
 
-Administra existencias y movimientos de inventario.
+Manages inventory levels and stock movements.
 
-### Comprador
+### Buyer
 
-Busca productos y crea pedidos.
+Searches for products and creates orders.
 
-### Usuario de consulta
+### Viewer
 
-Puede consultar información, pero no puede modificarla.
+Can view information but cannot modify it.
 
-## Funcionalidades del MVP
+## MVP features
 
-La primera versión funcional incluirá:
+The first functional version will include:
 
-* Creación de organizaciones.
-* Administración de usuarios.
-* Administración de roles y permisos.
-* Creación y modificación de productos.
-* Administración de almacenes.
-* Administración de inventario.
-* Búsqueda de productos.
-* Creación de pedidos.
-* Consulta del estado de los pedidos.
-* Registro de operaciones importantes.
+* Organization creation.
+* User management.
+* Role and permission management.
+* Product creation and management.
+* Warehouse management.
+* Inventory management.
+* Product search.
+* Order creation.
+* Order status tracking.
+* Audit event registration.
 
-## Funcionalidades fuera del MVP
+## Features outside the MVP
 
-Las siguientes funcionalidades no se desarrollarán inicialmente:
+The following features will not be developed initially:
 
-* Pagos reales.
-* Facturación electrónica.
-* Aplicación móvil.
-* Recomendaciones con inteligencia artificial.
+* Real payment processing.
+* Electronic invoicing.
+* Mobile applications.
+* Artificial intelligence recommendations.
 * Kubernetes.
-* Microservicios.
+* Microservices.
 * Microfrontends.
-* Múltiples lenguajes backend.
-* Integraciones con empresas de transporte.
+* Multiple backend programming languages.
+* Shipping carrier integrations.
 
-Estas funcionalidades podrán evaluarse después de completar una primera versión estable.
+These features may be evaluated after the first stable version is completed.
 
-## Arquitectura inicial
+## Initial architecture
 
-El proyecto comenzará utilizando un monolito modular.
+The project will begin as a modular monolith.
 
-Esto significa que existirá una sola aplicación backend, pero estará dividida internamente en módulos independientes.
+This means that there will be a single backend application, but it will be internally divided into independent modules.
 
-Los módulos iniciales serán:
+The initial modules will be:
 
-* Autenticación.
-* Organizaciones.
-* Usuarios y permisos.
-* Catálogo.
-* Inventario.
-* Pedidos.
-* Búsqueda.
-* Auditoría.
+* Authentication.
+* Organizations.
+* Users and permissions.
+* Catalog.
+* Inventory.
+* Orders.
+* Search.
+* Audit.
 
-No se utilizarán microservicios al comienzo porque primero es necesario comprender y completar correctamente las reglas de negocio dentro de una aplicación más sencilla de desarrollar y ejecutar.
+Microservices will not be used initially because the business rules must first be understood and implemented correctly within an application that is easier to develop, test, and operate.
 
-## Tecnologías planificadas
+## Planned technologies
 
 ### Frontend
 
@@ -129,88 +129,88 @@ No se utilizarán microservicios al comienzo porque primero es necesario compren
 * Pydantic.
 * Pytest.
 
-### Almacenamiento
+### Storage
 
-* PostgreSQL como fuente principal de información.
-* MongoDB para eventos de auditoría.
-* OpenSearch para búsqueda avanzada de productos.
+* PostgreSQL as the primary source of truth.
+* MongoDB for audit events.
+* OpenSearch for advanced product search.
 
-### Infraestructura
+### Infrastructure
 
 * Docker.
 * Docker Compose.
 * GitHub Actions.
 
-## Estrategia de almacenamiento
+## Storage strategy
 
 ### PostgreSQL
 
-PostgreSQL almacenará la información principal del negocio:
+PostgreSQL will store the primary business data:
 
-* Usuarios.
-* Organizaciones.
-* Productos.
-* Almacenes.
-* Inventario.
-* Pedidos.
-* Roles y permisos.
+* Users.
+* Organizations.
+* Products.
+* Warehouses.
+* Inventory.
+* Orders.
+* Roles and permissions.
 
-Será la fuente principal de verdad del sistema.
+PostgreSQL will be the primary source of truth for the system.
 
 ### MongoDB
 
-MongoDB se utilizará para almacenar eventos de auditoría e historiales de operaciones.
+MongoDB will be used to store audit events and operation history.
 
-Por ejemplo:
+For example:
 
-* Quién modificó un producto.
-* Qué información cambió.
-* Cuándo se realizó el cambio.
-* Qué valores existían antes y después.
+* Who modified a product.
+* What information changed.
+* When the change occurred.
+* Which values existed before and after the change.
 
 ### OpenSearch
 
-OpenSearch se utilizará para realizar búsquedas avanzadas de productos.
+OpenSearch will be used to provide advanced product search capabilities.
 
-Permitirá implementar:
+It will support:
 
-* Búsqueda por texto.
-* Filtros por categoría.
-* Filtros por marca.
-* Rangos de precios.
-* Filtros por atributos.
-* Ordenamiento de resultados.
+* Full-text search.
+* Category filters.
+* Brand filters.
+* Price ranges.
+* Attribute filters.
+* Result sorting.
 
-OpenSearch no será la fuente principal de información. Sus índices deberán poder reconstruirse utilizando los datos almacenados en PostgreSQL.
+OpenSearch will not be the primary source of truth. Its indexes must be rebuildable from the information stored in PostgreSQL.
 
-## Plan inicial
+## Initial roadmap
 
-1. Definir el alcance del producto.
-2. Preparar la estructura del repositorio.
-3. Crear el entorno local con Docker.
-4. Crear la aplicación backend.
-5. Conectar PostgreSQL.
-6. Implementar el módulo de productos.
-7. Crear la aplicación frontend.
-8. Implementar autenticación y organizaciones.
-9. Implementar inventario.
-10. Implementar pedidos.
-11. Integrar OpenSearch.
-12. Integrar MongoDB.
-13. Añadir procesamiento asíncrono.
-14. Añadir pruebas automatizadas.
-15. Configurar integración y despliegue continuo.
+1. Define the product scope.
+2. Prepare the repository structure.
+3. Create the local environment with Docker.
+4. Create the backend application.
+5. Connect PostgreSQL.
+6. Implement the product module.
+7. Create the frontend application.
+8. Implement authentication and organizations.
+9. Implement inventory management.
+10. Implement order management.
+11. Integrate OpenSearch.
+12. Integrate MongoDB.
+13. Add asynchronous processing.
+14. Add automated tests.
+15. Configure continuous integration and deployment.
 
-## Principios del proyecto
+## Project principles
 
-* La complejidad debe añadirse únicamente cuando resuelva un problema real.
-* Cada funcionalidad debe estar documentada.
-* Las reglas de negocio deben tener pruebas automatizadas.
-* PostgreSQL será la fuente principal de verdad.
-* Los errores deben manejarse de manera explícita.
-* La arquitectura debe facilitar el mantenimiento.
-* Las herramientas de inteligencia artificial serán asistentes, no sustitutos de la comprensión técnica.
+* Complexity should only be added when it solves a real problem.
+* Every feature should be documented.
+* Business rules should have automated tests.
+* PostgreSQL will be the primary source of truth.
+* Errors should be handled explicitly.
+* The architecture should support maintainability.
+* Artificial intelligence tools will be used as assistants, not as substitutes for technical understanding.
 
-## Autor
+## Author
 
-Proyecto desarrollado como parte de un proceso de aprendizaje y fortalecimiento profesional en desarrollo full stack y arquitectura de software.
+This project is being developed as part of a professional learning process focused on full-stack development and software architecture.
