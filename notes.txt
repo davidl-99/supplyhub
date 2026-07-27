@@ -1,0 +1,3 @@
+El archivo __init__.py le indica a Python que la carpeta app puede tratarse como un paquete de Python.
+
+El archivo apps/api/requirements.txt registra las dependencias instaladas y sus versiones.
