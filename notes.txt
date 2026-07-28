@@ -10,3 +10,6 @@ pero no contiene la contraseña real.
 Docker Compose lee automáticamente el archivo .env ubicado junto a compose.yaml 
 y utiliza sus valores para reemplazar expresiones como ${POSTGRES_DB}. El archivo 
 .env no debe subirse porque puede contener credenciales
+
+¿Qué es una migración?
+Una migración es un archivo que describe un cambio en la estructura de la base de datos.
