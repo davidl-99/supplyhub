@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.api.router import api_router
 from app.db.session import engine
 
 
@@ -10,6 +11,8 @@ app = FastAPI(
     description="API for the SupplyHub B2B platform.",
     version="0.1.0",
 )
+
+app.include_router(api_router)
 
 
 @app.get("/health", tags=["Health"])

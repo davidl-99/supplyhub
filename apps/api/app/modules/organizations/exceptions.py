@@ -1,0 +1,2 @@
+class OrganizationSlugAlreadyExistsError(Exception):
+    pass
