@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.modules.organizations.router import router as organizations_router
+from app.modules.products.router import router as products_router
 
 
 api_router = APIRouter(
@@ -8,3 +9,4 @@ api_router = APIRouter(
 )
 
 api_router.include_router(organizations_router)
+api_router.include_router(products_router)
