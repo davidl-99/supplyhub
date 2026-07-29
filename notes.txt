@@ -13,3 +13,10 @@ y utiliza sus valores para reemplazar expresiones como ${POSTGRES_DB}. El archiv
 
 ¿Qué es una migración?
 Una migración es un archivo que describe un cambio en la estructura de la base de datos.
+
+en la ruta apps/api/tests/conftest.py cada prueba:
+1. Abre una conexión.
+2. Inicia una transacción externa.
+3. Ejecuta peticiones reales contra FastAPI.
+4. Permite que el servicio llame a commit().
+5. Revierte todos los cambios al terminar.
