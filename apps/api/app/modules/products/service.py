@@ -6,12 +6,16 @@ from sqlalchemy.orm import Session
 from app.models.product import Product
 from app.modules.organizations.repository import OrganizationRepository
 from app.modules.products.exceptions import (
+    ProductNotFoundError,
     ProductOrganizationInactiveError,
     ProductOrganizationNotFoundError,
     ProductSkuAlreadyExistsError,
 )
 from app.modules.products.repository import ProductRepository
-from app.modules.products.schemas import ProductCreate
+from app.modules.products.schemas import (
+    ProductCreate,
+    ProductUpdate,
+)
 
 
 class ProductService:
@@ -51,14 +55,19 @@ class ProductService:
         )
 
         self.product_repository.add(product)
-
-        try:
-            self.session.commit()
-        except IntegrityError as error:
-            self.session.rollback()
-            raise ProductSkuAlreadyExistsError from error
-
+        self._commit()
         self.session.refresh(product)
+
+        return product
+
+    def get_by_id(
+        self,
+        product_id: uuid.UUID,
+    ) -> Product:
+        product = self.product_repository.get_by_id(product_id)
+
+        if product is None:
+            raise ProductNotFoundError
 
         return product
 
@@ -67,3 +76,55 @@ class ProductService:
         organization_id: uuid.UUID | None = None,
     ) -> list[Product]:
         return self.product_repository.list_all(organization_id)
+
+    def update(
+        self,
+        product_id: uuid.UUID,
+        data: ProductUpdate,
+    ) -> Product:
+        product = self.get_by_id(product_id)
+        changes = data.model_dump(exclude_unset=True)
+
+        new_sku = changes.get("sku")
+
+        if new_sku is not None and new_sku != product.sku:
+            existing_product = (
+                self.product_repository.get_by_organization_and_sku(
+                    organization_id=product.organization_id,
+                    sku=new_sku,
+                )
+            )
+
+            if existing_product is not None:
+                raise ProductSkuAlreadyExistsError
+
+        for field_name, value in changes.items():
+            setattr(product, field_name, value)
+
+        self._commit()
+        self.session.refresh(product)
+
+        return product
+
+    def deactivate(
+        self,
+        product_id: uuid.UUID,
+    ) -> Product:
+        product = self.get_by_id(product_id)
+
+        if not product.is_active:
+            return product
+
+        product.is_active = False
+
+        self._commit()
+        self.session.refresh(product)
+
+        return product
+
+    def _commit(self) -> None:
+        try:
+            self.session.commit()
+        except IntegrityError as error:
+            self.session.rollback()
+            raise ProductSkuAlreadyExistsError from error

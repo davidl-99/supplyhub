@@ -6,11 +6,16 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
 from app.modules.products.exceptions import (
+    ProductNotFoundError,
     ProductOrganizationInactiveError,
     ProductOrganizationNotFoundError,
     ProductSkuAlreadyExistsError,
 )
-from app.modules.products.schemas import ProductCreate, ProductRead
+from app.modules.products.schemas import (
+    ProductCreate,
+    ProductRead,
+    ProductUpdate,
+)
 from app.modules.products.service import ProductService
 
 
@@ -72,3 +77,75 @@ def list_products(
         ProductRead.model_validate(product)
         for product in products
     ]
+
+
+@router.get(
+    "/{product_id}",
+    response_model=ProductRead,
+)
+def get_product(
+    product_id: uuid.UUID,
+    session: DatabaseSession,
+) -> ProductRead:
+    service = ProductService(session)
+
+    try:
+        product = service.get_by_id(product_id)
+    except ProductNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        ) from error
+
+    return ProductRead.model_validate(product)
+
+
+@router.patch(
+    "/{product_id}",
+    response_model=ProductRead,
+)
+def update_product(
+    product_id: uuid.UUID,
+    data: ProductUpdate,
+    session: DatabaseSession,
+) -> ProductRead:
+    service = ProductService(session)
+
+    try:
+        product = service.update(
+            product_id=product_id,
+            data=data,
+        )
+    except ProductNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        ) from error
+    except ProductSkuAlreadyExistsError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Product SKU already exists for this organization",
+        ) from error
+
+    return ProductRead.model_validate(product)
+
+
+@router.post(
+    "/{product_id}/deactivate",
+    response_model=ProductRead,
+)
+def deactivate_product(
+    product_id: uuid.UUID,
+    session: DatabaseSession,
+) -> ProductRead:
+    service = ProductService(session)
+
+    try:
+        product = service.deactivate(product_id)
+    except ProductNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        ) from error
+
+    return ProductRead.model_validate(product)

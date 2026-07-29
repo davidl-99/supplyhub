@@ -10,6 +10,15 @@ class ProductRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def get_by_id(
+        self,
+        product_id: uuid.UUID,
+    ) -> Product | None:
+        return self.session.get(
+            Product,
+            product_id,
+        )
+
     def get_by_organization_and_sku(
         self,
         organization_id: uuid.UUID,
@@ -33,7 +42,9 @@ class ProductRepository:
                 Product.organization_id == organization_id,
             )
 
-        statement = statement.order_by(Product.created_at.desc())
+        statement = statement.order_by(
+            Product.created_at.desc(),
+        )
 
         return list(self.session.scalars(statement).all())
 
