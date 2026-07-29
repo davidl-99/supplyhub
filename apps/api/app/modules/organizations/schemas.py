@@ -1,7 +1,13 @@
 import uuid
 from datetime import datetime
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 # OrganizationCreate representa los datos que el cliente debe enviar:
 # {
@@ -23,6 +29,41 @@ class OrganizationCreate(BaseModel):
     model_config = ConfigDict(
         str_strip_whitespace=True,
     )
+
+#El esquema permite enviar únicamente los campos que queremos modificar.
+#por ejemplo:
+# {
+#   "name": "Acme Global Corporation"
+# }
+class OrganizationUpdate(BaseModel):
+    name: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=150,
+    )
+
+    slug: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
+    )
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+    )
+
+    #esto ejecuta una validación después de que Pydantic haya procesado los campos.
+    @model_validator(mode="after")
+    def validate_update_fields(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("At least one field must be provided")
+
+        for field_name in self.model_fields_set:
+            if getattr(self, field_name) is None:
+                raise ValueError("Update fields cannot be null")
+
+        return self
 
 # OrganizationRead Representa la respuesta pública de la API.
 class OrganizationRead(BaseModel):

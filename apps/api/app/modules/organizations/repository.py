@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,15 @@ from app.models.organization import Organization
 class OrganizationRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    def get_by_id(
+        self,
+        organization_id: uuid.UUID,
+    ) -> Organization | None:
+        return self.session.get(
+            Organization,
+            organization_id,
+        )
 
     def get_by_slug(self, slug: str) -> Organization | None:
         statement = select(Organization).where(
