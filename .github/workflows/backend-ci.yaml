@@ -38,11 +38,11 @@ jobs:
           --health-retries 5
 
     env:
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: supplyhub_test
-      POSTGRES_USER: supplyhub
-      POSTGRES_PASSWORD: supplyhub_test_password
+      TEST_POSTGRES_HOST: localhost
+      TEST_POSTGRES_PORT: 5432
+      TEST_POSTGRES_DB: supplyhub_test
+      TEST_POSTGRES_USER: supplyhub
+      TEST_POSTGRES_PASSWORD: supplyhub_test_password
 
     defaults:
       run:
@@ -61,9 +61,6 @@ jobs:
 
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
-
-      - name: Apply database migrations
-        run: python -m alembic upgrade head
 
       - name: Run tests
         run: python -m pytest

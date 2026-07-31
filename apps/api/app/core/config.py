@@ -8,7 +8,7 @@ from sqlalchemy.engine import URL
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 ENV_FILE = PROJECT_ROOT / ".env"
 
-# Esta clase define las configuraciones requeridas:
+# Application settings required to connect to PostgreSQL.
 class Settings(BaseSettings):
     postgres_host: str
     postgres_port: int
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
         )
 
 
-# hace que la configuración se cree una vez y después se reutilice.
+# Build the settings once and reuse them across the application.
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

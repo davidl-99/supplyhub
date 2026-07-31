@@ -4,7 +4,34 @@ SupplyHub is a B2B platform where supplier organizations can manage their produc
 
 ## Project status
 
-The project is currently in its initial planning and architecture definition stage.
+The backend currently supports organization and product management, including product search, filtering, and pagination. Automated tests run against a dedicated PostgreSQL test database.
+
+## Local development
+
+Start the development and test databases from the repository root:
+
+```powershell
+docker compose up -d
+```
+
+Apply migrations to the development database and run the API:
+
+```powershell
+cd apps\api
+..\..\.venv\Scripts\Activate.ps1
+python -m alembic upgrade head
+python -m uvicorn app.main:app --reload
+```
+
+Run the test suite in a separate terminal:
+
+```powershell
+cd apps\api
+..\..\.venv\Scripts\Activate.ps1
+python -m pytest -v
+```
+
+Tests connect to the dedicated `supplyhub_test` database on port `5433` and apply pending migrations automatically. The test service uses disposable local credentials and does not store data in the development database volume.
 
 ## Problem
 
