@@ -1,7 +1,14 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    status,
+)
+
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
@@ -13,6 +20,8 @@ from app.modules.products.exceptions import (
 )
 from app.modules.products.schemas import (
     ProductCreate,
+    ProductListQuery,
+    ProductListRead,
     ProductRead,
     ProductUpdate,
 )
@@ -27,6 +36,11 @@ router = APIRouter(
 DatabaseSession = Annotated[
     Session,
     Depends(get_db_session),
+]
+
+ProductFilters = Annotated[
+    ProductListQuery,
+    Query(),
 ]
 
 
@@ -66,17 +80,27 @@ def create_product(
     "/",
     response_model=list[ProductRead],
 )
+@router.get(
+    "/",
+    response_model=ProductListRead,
+)
 def list_products(
     session: DatabaseSession,
-    organization_id: uuid.UUID | None = None,
-) -> list[ProductRead]:
+    filters: ProductFilters,
+) -> ProductListRead:
     service = ProductService(session)
-    products = service.list_all(organization_id)
 
-    return [
-        ProductRead.model_validate(product)
-        for product in products
-    ]
+    products, total = service.list_all(filters)
+
+    return ProductListRead(
+        items=[
+            ProductRead.model_validate(product)
+            for product in products
+        ],
+        total=total,
+        limit=filters.limit,
+        offset=filters.offset,
+    )
 
 
 @router.get(

@@ -186,8 +186,14 @@ def test_list_products_by_organization(
     )
 
     assert response.status_code == 200
-    assert len(response.json()) == 1
-    assert response.json()[0]["id"] == first_product["id"]
+
+    body = response.json()
+
+    assert body["total"] == 1
+    assert len(body["items"]) == 1
+    assert body["items"][0]["id"] == first_product["id"]
+    assert body["limit"] == 20
+    assert body["offset"] == 0
 
 
 def test_get_and_update_product(client: TestClient) -> None:
@@ -247,3 +253,100 @@ def test_get_unknown_product(client: TestClient) -> None:
     assert response.json() == {
         "detail": "Product not found",
     }
+
+def test_search_products(client: TestClient) -> None:
+    organization = create_organization(client)
+    organization_id = str(organization["id"])
+
+    keyboard_payload = build_product_payload(
+        organization_id,
+        "KEYBOARD-001",
+    )
+    keyboard_payload["name"] = "Industrial Keyboard"
+
+    monitor_payload = build_product_payload(
+        organization_id,
+        "MONITOR-001",
+    )
+    monitor_payload["name"] = "Business Monitor"
+
+    client.post("/api/v1/products/", json=keyboard_payload)
+    client.post("/api/v1/products/", json=monitor_payload)
+
+    response = client.get(
+        "/api/v1/products/",
+        params={
+            "organization_id": organization_id,
+            "search": "keyboard",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["sku"] == "KEYBOARD-001"
+
+
+def test_filter_products_by_status(
+    client: TestClient,
+) -> None:
+    organization = create_organization(client)
+    organization_id = str(organization["id"])
+
+    active_product = create_product(
+        client,
+        organization_id,
+    )
+    inactive_product = create_product(
+        client,
+        organization_id,
+    )
+
+    client.post(
+        f"/api/v1/products/{inactive_product['id']}/deactivate"
+    )
+
+    response = client.get(
+        "/api/v1/products/",
+        params={
+            "organization_id": organization_id,
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["id"] == active_product["id"]
+
+
+def test_paginate_products(client: TestClient) -> None:
+    organization = create_organization(client)
+    organization_id = str(organization["id"])
+
+    for _ in range(3):
+        create_product(client, organization_id)
+
+    first_page = client.get(
+        "/api/v1/products/",
+        params={
+            "organization_id": organization_id,
+            "limit": 2,
+            "offset": 0,
+        },
+    )
+
+    second_page = client.get(
+        "/api/v1/products/",
+        params={
+            "organization_id": organization_id,
+            "limit": 2,
+            "offset": 2,
+        },
+    )
+
+    assert first_page.status_code == 200
+    assert first_page.json()["total"] == 3
+    assert len(first_page.json()["items"]) == 2
+
+    assert second_page.status_code == 200
+    assert second_page.json()["total"] == 3
+    assert len(second_page.json()["items"]) == 1

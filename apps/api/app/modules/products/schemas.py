@@ -121,3 +121,64 @@ class ProductRead(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
     )
+
+class ProductListQuery(BaseModel):
+    organization_id: uuid.UUID | None = None
+
+    search: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+    )
+
+    is_active: bool | None = None
+
+    min_price: Decimal | None = Field(
+        default=None,
+        ge=0,
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    max_price: Decimal | None = Field(
+        default=None,
+        ge=0,
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    limit: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+    )
+
+    offset: int = Field(
+        default=0,
+        ge=0,
+    )
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        extra="forbid",
+    )
+
+    @model_validator(mode="after")
+    def validate_price_range(self) -> Self:
+        if (
+            self.min_price is not None
+            and self.max_price is not None
+            and self.min_price > self.max_price
+        ):
+            raise ValueError(
+                "min_price cannot be greater than max_price"
+            )
+
+        return self
+
+
+class ProductListRead(BaseModel):
+    items: list[ProductRead]
+    total: int
+    limit: int
+    offset: int

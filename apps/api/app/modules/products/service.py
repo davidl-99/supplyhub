@@ -14,6 +14,7 @@ from app.modules.products.exceptions import (
 from app.modules.products.repository import ProductRepository
 from app.modules.products.schemas import (
     ProductCreate,
+    ProductListQuery,
     ProductUpdate,
 )
 
@@ -73,9 +74,17 @@ class ProductService:
 
     def list_all(
         self,
-        organization_id: uuid.UUID | None = None,
-    ) -> list[Product]:
-        return self.product_repository.list_all(organization_id)
+        filters: ProductListQuery,
+    ) -> tuple[list[Product], int]:
+        return self.product_repository.list_all(
+           organization_id=filters.organization_id,
+           search=filters.search,
+           is_active=filters.is_active,
+           min_price=filters.min_price,
+           max_price=filters.max_price,
+           limit=filters.limit,
+           offset=filters.offset,
+        )
 
     def update(
         self,
