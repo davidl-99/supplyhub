@@ -36,7 +36,7 @@ Tests connect to the dedicated `supplyhub_test` database on port `5433` and appl
 Install development tools and check linting and formatting before committing backend changes:
 
 ```powershell
-python -m pip install -r requirements-dev.txt
+python -m pip install -r requirements.txt
 python -m ruff check .
 python -m ruff format --check .
 ```
