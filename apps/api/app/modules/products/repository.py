@@ -45,9 +45,7 @@ class ProductRepository:
         conditions = []
 
         if organization_id is not None:
-            conditions.append(
-                Product.organization_id == organization_id
-            )
+            conditions.append(Product.organization_id == organization_id)
 
         if search is not None:
             search_pattern = f"%{search}%"
@@ -61,25 +59,15 @@ class ProductRepository:
             )
 
         if is_active is not None:
-            conditions.append(
-                Product.is_active == is_active
-            )
+            conditions.append(Product.is_active == is_active)
 
         if min_price is not None:
-            conditions.append(
-                Product.price >= min_price
-            )
+            conditions.append(Product.price >= min_price)
 
         if max_price is not None:
-            conditions.append(
-                Product.price <= max_price
-            )
+            conditions.append(Product.price <= max_price)
 
-        count_statement = (
-            select(func.count())
-            .select_from(Product)
-            .where(*conditions)
-        )
+        count_statement = select(func.count()).select_from(Product).where(*conditions)
 
         total = self.session.scalar(count_statement) or 0
 
@@ -94,9 +82,7 @@ class ProductRepository:
             .limit(limit)
         )
 
-        products = list(
-            self.session.scalars(statement).all()
-        )
+        products = list(self.session.scalars(statement).all())
 
         return products, total
 

@@ -254,6 +254,7 @@ def test_get_unknown_product(client: TestClient) -> None:
         "detail": "Product not found",
     }
 
+
 def test_search_products(client: TestClient) -> None:
     organization = create_organization(client)
     organization_id = str(organization["id"])
@@ -301,9 +302,7 @@ def test_filter_products_by_status(
         organization_id,
     )
 
-    client.post(
-        f"/api/v1/products/{inactive_product['id']}/deactivate"
-    )
+    client.post(f"/api/v1/products/{inactive_product['id']}/deactivate")
 
     response = client.get(
         "/api/v1/products/",

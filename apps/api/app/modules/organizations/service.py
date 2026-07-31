@@ -59,7 +59,7 @@ class OrganizationService:
     ) -> Organization:
         organization = self.get_by_id(organization_id)
 
-        #convierte el esquema en un diccionario, pero únicamente incluye 
+        # convierte el esquema en un diccionario, pero únicamente incluye
         # los campos enviados por el cliente.
         changes = data.model_dump(exclude_unset=True)
 

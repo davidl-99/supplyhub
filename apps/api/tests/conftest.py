@@ -1,5 +1,5 @@
-from collections.abc import Iterator
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -7,7 +7,6 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-
 
 API_ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,9 +28,7 @@ def migrated_database() -> None:
     database_name = os.environ["POSTGRES_DB"]
 
     if not database_name.endswith("_test"):
-        raise RuntimeError(
-            "Tests require a database whose name ends with '_test'"
-        )
+        raise RuntimeError("Tests require a database whose name ends with '_test'")
 
     alembic_config = Config(API_ROOT / "alembic.ini")
     command.upgrade(alembic_config, "head")

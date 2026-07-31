@@ -33,6 +33,14 @@ python -m pytest -v
 
 Tests connect to the dedicated `supplyhub_test` database on port `5433` and apply pending migrations automatically. The test service uses disposable local credentials and does not store data in the development database volume.
 
+Install development tools and check linting and formatting before committing backend changes:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m ruff check .
+python -m ruff format --check .
+```
+
 ## Problem
 
 Many companies need to manage catalogs, inventory, and orders between organizations.

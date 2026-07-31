@@ -122,6 +122,7 @@ class ProductRead(BaseModel):
         from_attributes=True,
     )
 
+
 class ProductListQuery(BaseModel):
     organization_id: uuid.UUID | None = None
 
@@ -170,9 +171,7 @@ class ProductListQuery(BaseModel):
             and self.max_price is not None
             and self.min_price > self.max_price
         ):
-            raise ValueError(
-                "min_price cannot be greater than max_price"
-            )
+            raise ValueError("min_price cannot be greater than max_price")
 
         return self
 

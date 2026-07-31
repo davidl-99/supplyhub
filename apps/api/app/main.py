@@ -5,7 +5,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.router import api_router
 from app.db.session import engine
 
-
 app = FastAPI(
     title="SupplyHub API",
     description="API for the SupplyHub B2B platform.",

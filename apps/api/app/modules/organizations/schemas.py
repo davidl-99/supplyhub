@@ -9,6 +9,7 @@ from pydantic import (
     model_validator,
 )
 
+
 # OrganizationCreate representa los datos que el cliente debe enviar:
 # {
 #   "name": "Acme Corporation",
@@ -30,8 +31,9 @@ class OrganizationCreate(BaseModel):
         str_strip_whitespace=True,
     )
 
-#El esquema permite enviar únicamente los campos que queremos modificar.
-#por ejemplo:
+
+# El esquema permite enviar únicamente los campos que queremos modificar.
+# por ejemplo:
 # {
 #   "name": "Acme Global Corporation"
 # }
@@ -53,7 +55,7 @@ class OrganizationUpdate(BaseModel):
         str_strip_whitespace=True,
     )
 
-    #esto ejecuta una validación después de que Pydantic haya procesado los campos.
+    # esto ejecuta una validación después de que Pydantic haya procesado los campos.
     @model_validator(mode="after")
     def validate_update_fields(self) -> Self:
         if not self.model_fields_set:
@@ -64,6 +66,7 @@ class OrganizationUpdate(BaseModel):
                 raise ValueError("Update fields cannot be null")
 
         return self
+
 
 # OrganizationRead Representa la respuesta pública de la API.
 class OrganizationRead(BaseModel):
@@ -77,6 +80,6 @@ class OrganizationRead(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
     )
-    # from_attributes=True permite que Pydantic construya la respuesta 
-    # leyendo los atributos de un objeto SQLAlchemy, como 
+    # from_attributes=True permite que Pydantic construya la respuesta
+    # leyendo los atributos de un objeto SQLAlchemy, como
     # organization.id y organization.name

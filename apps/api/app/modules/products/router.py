@@ -8,7 +8,6 @@ from fastapi import (
     Query,
     status,
 )
-
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
@@ -26,7 +25,6 @@ from app.modules.products.schemas import (
     ProductUpdate,
 )
 from app.modules.products.service import ProductService
-
 
 router = APIRouter(
     prefix="/products",
@@ -93,10 +91,7 @@ def list_products(
     products, total = service.list_all(filters)
 
     return ProductListRead(
-        items=[
-            ProductRead.model_validate(product)
-            for product in products
-        ],
+        items=[ProductRead.model_validate(product) for product in products],
         total=total,
         limit=filters.limit,
         offset=filters.offset,

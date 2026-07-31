@@ -36,11 +36,9 @@ class ProductService:
         if not organization.is_active:
             raise ProductOrganizationInactiveError
 
-        existing_product = (
-            self.product_repository.get_by_organization_and_sku(
-                organization_id=data.organization_id,
-                sku=data.sku,
-            )
+        existing_product = self.product_repository.get_by_organization_and_sku(
+            organization_id=data.organization_id,
+            sku=data.sku,
         )
 
         if existing_product is not None:
@@ -77,13 +75,13 @@ class ProductService:
         filters: ProductListQuery,
     ) -> tuple[list[Product], int]:
         return self.product_repository.list_all(
-           organization_id=filters.organization_id,
-           search=filters.search,
-           is_active=filters.is_active,
-           min_price=filters.min_price,
-           max_price=filters.max_price,
-           limit=filters.limit,
-           offset=filters.offset,
+            organization_id=filters.organization_id,
+            search=filters.search,
+            is_active=filters.is_active,
+            min_price=filters.min_price,
+            max_price=filters.max_price,
+            limit=filters.limit,
+            offset=filters.offset,
         )
 
     def update(
@@ -97,11 +95,9 @@ class ProductService:
         new_sku = changes.get("sku")
 
         if new_sku is not None and new_sku != product.sku:
-            existing_product = (
-                self.product_repository.get_by_organization_and_sku(
-                    organization_id=product.organization_id,
-                    sku=new_sku,
-                )
+            existing_product = self.product_repository.get_by_organization_and_sku(
+                organization_id=product.organization_id,
+                sku=new_sku,
             )
 
             if existing_product is not None:

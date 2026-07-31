@@ -16,13 +16,12 @@ from app.modules.organizations.schemas import (
 )
 from app.modules.organizations.service import OrganizationService
 
-
 router = APIRouter(
     prefix="/organizations",
     tags=["Organizations"],
 )
 
-# le indica a FastAPI: Antes de ejecutar el endpoint, crea una 
+# le indica a FastAPI: Antes de ejecutar el endpoint, crea una
 # sesión usando get_db_session() y entrégala en el parámetro session.
 DatabaseSession = Annotated[
     Session,
@@ -63,8 +62,7 @@ def list_organizations(
     organizations = service.list_all()
 
     return [
-        OrganizationRead.model_validate(organization)
-        for organization in organizations
+        OrganizationRead.model_validate(organization) for organization in organizations
     ]
 
 

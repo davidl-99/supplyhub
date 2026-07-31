@@ -118,9 +118,7 @@ def test_reject_empty_update(client: TestClient) -> None:
 
 def test_deactivate_organization(client: TestClient) -> None:
     organization = create_organization(client)
-    endpoint = (
-        f"/api/v1/organizations/{organization['id']}/deactivate"
-    )
+    endpoint = f"/api/v1/organizations/{organization['id']}/deactivate"
 
     first_response = client.post(endpoint)
     second_response = client.post(endpoint)
