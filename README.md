@@ -4,7 +4,7 @@ SupplyHub is a B2B platform where supplier organizations can manage their produc
 
 ## Project status
 
-The backend currently supports organization, product, and warehouse management, including search, filtering, pagination, and soft deactivation. Automated tests run against a dedicated PostgreSQL test database.
+The backend currently supports organization, product, warehouse, and inventory management, including search, filtering, pagination, soft deactivation, stock levels, and auditable stock adjustments. Automated tests run against a dedicated PostgreSQL test database.
 
 ## Local development
 
@@ -20,7 +20,7 @@ Apply migrations to the development database and run the API:
 cd apps\api
 ..\..\.venv\Scripts\Activate.ps1
 python -m alembic upgrade head
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload --port 8001
 ```
 
 Run the test suite in a separate terminal:
