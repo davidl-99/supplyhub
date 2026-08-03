@@ -39,6 +39,7 @@ Install development tools and check linting and formatting before committing bac
 python -m pip install -r requirements.txt
 python -m ruff check .
 python -m ruff format --check .
+python -m mypy app
 ```
 
 ## Problem
