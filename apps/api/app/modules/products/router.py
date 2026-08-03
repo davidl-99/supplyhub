@@ -76,10 +76,6 @@ def create_product(
 
 @router.get(
     "/",
-    response_model=list[ProductRead],
-)
-@router.get(
-    "/",
     response_model=ProductListRead,
 )
 def list_products(
