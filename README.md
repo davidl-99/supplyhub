@@ -4,7 +4,7 @@ SupplyHub is a B2B platform where supplier organizations can manage their produc
 
 ## Project status
 
-The backend currently supports organization, product, warehouse, and inventory management, including search, filtering, pagination, soft deactivation, stock levels, and auditable stock adjustments. Automated tests run against a dedicated PostgreSQL test database.
+The backend currently supports organization, product, warehouse, and inventory management, including search, filtering, pagination, soft deactivation, stock levels, auditable stock adjustments, and filtered stock movement history. Automated tests run against a dedicated PostgreSQL test database.
 
 ## Local development
 

@@ -20,6 +20,8 @@ from app.modules.inventory.schemas import (
     InventoryLevelListQuery,
     InventoryLevelListRead,
     InventoryLevelRead,
+    StockMovementListQuery,
+    StockMovementListRead,
     StockMovementRead,
 )
 from app.modules.inventory.service import InventoryService
@@ -27,6 +29,7 @@ from app.modules.inventory.service import InventoryService
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 InventoryFilters = Annotated[InventoryLevelListQuery, Query()]
+StockMovementFilters = Annotated[StockMovementListQuery, Query()]
 
 
 @router.post(
@@ -100,3 +103,17 @@ def get_inventory_level(
             "Inventory level not found",
         ) from error
     return InventoryLevelRead.model_validate(level)
+
+
+@router.get("/movements", response_model=StockMovementListRead)
+def list_stock_movements(
+    session: DatabaseSession,
+    filters: StockMovementFilters,
+) -> StockMovementListRead:
+    movements, total = InventoryService(session).list_movements(filters)
+    return StockMovementListRead(
+        items=[StockMovementRead.model_validate(movement) for movement in movements],
+        total=total,
+        limit=filters.limit,
+        offset=filters.offset,
+    )

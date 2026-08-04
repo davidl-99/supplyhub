@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class InventoryAdjustmentCreate(BaseModel):
@@ -58,6 +58,35 @@ class InventoryLevelListQuery(BaseModel):
 
 class InventoryLevelListRead(BaseModel):
     items: list[InventoryLevelRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class StockMovementListQuery(BaseModel):
+    inventory_level_id: uuid.UUID | None = None
+    warehouse_id: uuid.UUID | None = None
+    product_id: uuid.UUID | None = None
+    created_from: datetime | None = None
+    created_to: datetime | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_created_range(self) -> "StockMovementListQuery":
+        if (
+            self.created_from is not None
+            and self.created_to is not None
+            and self.created_from > self.created_to
+        ):
+            raise ValueError("created_from cannot be greater than created_to")
+        return self
+
+
+class StockMovementListRead(BaseModel):
+    items: list[StockMovementRead]
     total: int
     limit: int
     offset: int

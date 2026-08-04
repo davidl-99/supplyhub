@@ -16,6 +16,7 @@ from app.modules.inventory.repository import InventoryRepository
 from app.modules.inventory.schemas import (
     InventoryAdjustmentCreate,
     InventoryLevelListQuery,
+    StockMovementListQuery,
 )
 from app.modules.products.repository import ProductRepository
 from app.modules.warehouses.repository import WarehouseRepository
@@ -87,6 +88,20 @@ class InventoryService:
         return self.inventory_repository.list_levels(
             warehouse_id=filters.warehouse_id,
             product_id=filters.product_id,
+            limit=filters.limit,
+            offset=filters.offset,
+        )
+
+    def list_movements(
+        self,
+        filters: StockMovementListQuery,
+    ) -> tuple[list[StockMovement], int]:
+        return self.inventory_repository.list_movements(
+            inventory_level_id=filters.inventory_level_id,
+            warehouse_id=filters.warehouse_id,
+            product_id=filters.product_id,
+            created_from=filters.created_from,
+            created_to=filters.created_to,
             limit=filters.limit,
             offset=filters.offset,
         )

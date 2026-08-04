@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -86,3 +87,44 @@ class InventoryRepository:
 
     def add_movement(self, movement: StockMovement) -> None:
         self.session.add(movement)
+
+    def list_movements(
+        self,
+        inventory_level_id: uuid.UUID | None = None,
+        warehouse_id: uuid.UUID | None = None,
+        product_id: uuid.UUID | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[StockMovement], int]:
+        conditions = []
+
+        if inventory_level_id is not None:
+            conditions.append(StockMovement.inventory_level_id == inventory_level_id)
+        if warehouse_id is not None:
+            conditions.append(InventoryLevel.warehouse_id == warehouse_id)
+        if product_id is not None:
+            conditions.append(InventoryLevel.product_id == product_id)
+        if created_from is not None:
+            conditions.append(StockMovement.created_at >= created_from)
+        if created_to is not None:
+            conditions.append(StockMovement.created_at <= created_to)
+
+        requires_level_join = warehouse_id is not None or product_id is not None
+        count_statement = select(func.count()).select_from(StockMovement)
+        statement = select(StockMovement)
+
+        if requires_level_join:
+            count_statement = count_statement.join(InventoryLevel)
+            statement = statement.join(InventoryLevel)
+
+        total = self.session.scalar(count_statement.where(*conditions)) or 0
+        statement = (
+            statement.where(*conditions)
+            .order_by(StockMovement.created_at.desc(), StockMovement.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        movements = list(self.session.scalars(statement).all())
+        return movements, total
