@@ -6,11 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
 from app.modules.inventory.exceptions import (
+    InsufficientAvailableInventoryError,
     InsufficientInventoryError,
     InventoryLevelNotFoundError,
     InventoryOrganizationMismatchError,
     InventoryProductInactiveError,
     InventoryProductNotFoundError,
+    InventoryReservationNotActiveError,
+    InventoryReservationNotFoundError,
     InventoryWarehouseInactiveError,
     InventoryWarehouseNotFoundError,
 )
@@ -20,6 +23,11 @@ from app.modules.inventory.schemas import (
     InventoryLevelListQuery,
     InventoryLevelListRead,
     InventoryLevelRead,
+    InventoryReservationCreate,
+    InventoryReservationListQuery,
+    InventoryReservationListRead,
+    InventoryReservationOperationRead,
+    InventoryReservationRead,
     StockMovementListQuery,
     StockMovementListRead,
     StockMovementRead,
@@ -30,6 +38,7 @@ router = APIRouter(prefix="/inventory", tags=["Inventory"])
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 InventoryFilters = Annotated[InventoryLevelListQuery, Query()]
 StockMovementFilters = Annotated[StockMovementListQuery, Query()]
+InventoryReservationFilters = Annotated[InventoryReservationListQuery, Query()]
 
 
 @router.post(
@@ -64,6 +73,11 @@ def adjust_inventory(
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "Inventory quantity cannot become negative",
+        ) from error
+    except InsufficientAvailableInventoryError as error:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Insufficient available inventory",
         ) from error
 
     return InventoryAdjustmentRead(
@@ -116,4 +130,140 @@ def list_stock_movements(
         total=total,
         limit=filters.limit,
         offset=filters.offset,
+    )
+
+
+@router.post(
+    "/reservations",
+    response_model=InventoryReservationOperationRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_inventory_reservation(
+    data: InventoryReservationCreate,
+    session: DatabaseSession,
+) -> InventoryReservationOperationRead:
+    try:
+        level, reservation = InventoryService(session).create_reservation(data)
+    except InventoryProductNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found") from error
+    except InventoryWarehouseNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Warehouse not found") from error
+    except InventoryLevelNotFoundError as error:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Inventory level not found",
+        ) from error
+    except InventoryProductInactiveError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Product is inactive") from error
+    except InventoryWarehouseInactiveError as error:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Warehouse is inactive",
+        ) from error
+    except InventoryOrganizationMismatchError as error:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Product and warehouse belong to different organizations",
+        ) from error
+    except InsufficientAvailableInventoryError as error:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Insufficient available inventory",
+        ) from error
+
+    return InventoryReservationOperationRead(
+        level=InventoryLevelRead.model_validate(level),
+        reservation=InventoryReservationRead.model_validate(reservation),
+    )
+
+
+@router.get("/reservations", response_model=InventoryReservationListRead)
+def list_inventory_reservations(
+    session: DatabaseSession,
+    filters: InventoryReservationFilters,
+) -> InventoryReservationListRead:
+    reservations, total = InventoryService(session).list_reservations(filters)
+    return InventoryReservationListRead(
+        items=[
+            InventoryReservationRead.model_validate(reservation)
+            for reservation in reservations
+        ],
+        total=total,
+        limit=filters.limit,
+        offset=filters.offset,
+    )
+
+
+@router.get(
+    "/reservations/{reservation_id}",
+    response_model=InventoryReservationRead,
+)
+def get_inventory_reservation(
+    reservation_id: uuid.UUID,
+    session: DatabaseSession,
+) -> InventoryReservationRead:
+    try:
+        reservation = InventoryService(session).get_reservation(reservation_id)
+    except InventoryReservationNotFoundError as error:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Inventory reservation not found",
+        ) from error
+    return InventoryReservationRead.model_validate(reservation)
+
+
+@router.post(
+    "/reservations/{reservation_id}/release",
+    response_model=InventoryReservationOperationRead,
+)
+def release_inventory_reservation(
+    reservation_id: uuid.UUID,
+    session: DatabaseSession,
+) -> InventoryReservationOperationRead:
+    try:
+        level, reservation = InventoryService(session).release_reservation(
+            reservation_id
+        )
+    except InventoryReservationNotFoundError as error:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Inventory reservation not found",
+        ) from error
+    except InventoryReservationNotActiveError as error:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Inventory reservation is not active",
+        ) from error
+    return InventoryReservationOperationRead(
+        level=InventoryLevelRead.model_validate(level),
+        reservation=InventoryReservationRead.model_validate(reservation),
+    )
+
+
+@router.post(
+    "/reservations/{reservation_id}/consume",
+    response_model=InventoryReservationOperationRead,
+)
+def consume_inventory_reservation(
+    reservation_id: uuid.UUID,
+    session: DatabaseSession,
+) -> InventoryReservationOperationRead:
+    try:
+        level, reservation, movement = InventoryService(session).consume_reservation(
+            reservation_id
+        )
+    except InventoryReservationNotFoundError as error:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Inventory reservation not found",
+        ) from error
+    except InventoryReservationNotActiveError as error:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Inventory reservation is not active",
+        ) from error
+    return InventoryReservationOperationRead(
+        level=InventoryLevelRead.model_validate(level),
+        reservation=InventoryReservationRead.model_validate(reservation),
+        movement=StockMovementRead.model_validate(movement),
     )

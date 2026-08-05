@@ -30,6 +30,14 @@ class InventoryLevel(Base):
             "quantity >= 0",
             name="ck_inventory_levels_quantity_non_negative",
         ),
+        CheckConstraint(
+            "reserved_quantity >= 0",
+            name="ck_inventory_levels_reserved_quantity_non_negative",
+        ),
+        CheckConstraint(
+            "reserved_quantity <= quantity",
+            name="ck_inventory_levels_reserved_quantity_not_above_quantity",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -55,6 +63,12 @@ class InventoryLevel(Base):
         default=0,
         server_default=text("0"),
     )
+    reserved_quantity: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -66,6 +80,10 @@ class InventoryLevel(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+    @property
+    def available_quantity(self) -> int:
+        return self.quantity - self.reserved_quantity
 
 
 class StockMovement(Base):
@@ -100,4 +118,51 @@ class StockMovement(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+    )
+
+
+class InventoryReservation(Base):
+    __tablename__ = "inventory_reservations"
+
+    __table_args__ = (
+        CheckConstraint(
+            "quantity > 0",
+            name="ck_inventory_reservations_quantity_positive",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'released', 'consumed')",
+            name="ck_inventory_reservations_status_valid",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    inventory_level_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("inventory_levels.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="active",
+        server_default=text("'active'"),
+        index=True,
+    )
+    external_reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )

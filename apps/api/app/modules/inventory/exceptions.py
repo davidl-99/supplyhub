@@ -24,3 +24,15 @@ class InsufficientInventoryError(Exception):
 
 class InventoryLevelNotFoundError(Exception):
     pass
+
+
+class InsufficientAvailableInventoryError(Exception):
+    pass
+
+
+class InventoryReservationNotFoundError(Exception):
+    pass
+
+
+class InventoryReservationNotActiveError(Exception):
+    pass

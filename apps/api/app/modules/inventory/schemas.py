@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -25,6 +26,8 @@ class InventoryLevelRead(BaseModel):
     warehouse_id: uuid.UUID
     product_id: uuid.UUID
     quantity: int
+    reserved_quantity: int
+    available_quantity: int
     created_at: datetime
     updated_at: datetime
 
@@ -87,6 +90,51 @@ class StockMovementListQuery(BaseModel):
 
 class StockMovementListRead(BaseModel):
     items: list[StockMovementRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class InventoryReservationCreate(BaseModel):
+    warehouse_id: uuid.UUID
+    product_id: uuid.UUID
+    quantity: int = Field(gt=0)
+    external_reference: str | None = Field(default=None, min_length=1, max_length=100)
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+
+class InventoryReservationRead(BaseModel):
+    id: uuid.UUID
+    inventory_level_id: uuid.UUID
+    quantity: int
+    status: Literal["active", "released", "consumed"]
+    external_reference: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InventoryReservationOperationRead(BaseModel):
+    level: InventoryLevelRead
+    reservation: InventoryReservationRead
+    movement: StockMovementRead | None = None
+
+
+class InventoryReservationListQuery(BaseModel):
+    inventory_level_id: uuid.UUID | None = None
+    warehouse_id: uuid.UUID | None = None
+    product_id: uuid.UUID | None = None
+    status: Literal["active", "released", "consumed"] | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class InventoryReservationListRead(BaseModel):
+    items: list[InventoryReservationRead]
     total: int
     limit: int
     offset: int

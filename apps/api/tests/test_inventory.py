@@ -83,6 +83,27 @@ def adjust_inventory(
     return response.json()
 
 
+def create_reservation(
+    client: TestClient,
+    product_id: object,
+    warehouse_id: object,
+    quantity: int,
+    *,
+    external_reference: str | None = None,
+) -> dict[str, object]:
+    response = client.post(
+        "/api/v1/inventory/reservations",
+        json={
+            "product_id": product_id,
+            "warehouse_id": warehouse_id,
+            "quantity": quantity,
+            "external_reference": external_reference,
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 def test_adjust_inventory_creates_level_and_movement(client: TestClient) -> None:
     product, warehouse = create_inventory_resources(client)
 
@@ -279,6 +300,152 @@ def test_reject_invalid_stock_movement_date_range(client: TestClient) -> None:
         params={
             "created_from": (now + timedelta(days=1)).isoformat(),
             "created_to": now.isoformat(),
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_create_inventory_reservation_reduces_available_quantity(
+    client: TestClient,
+) -> None:
+    product, warehouse = create_inventory_resources(client)
+    adjust_inventory(client, product["id"], warehouse["id"], 20)
+
+    body = create_reservation(
+        client,
+        product["id"],
+        warehouse["id"],
+        8,
+        external_reference="cart-123",
+    )
+
+    assert body["reservation"]["status"] == "active"
+    assert body["reservation"]["external_reference"] == "cart-123"
+    assert body["level"]["quantity"] == 20
+    assert body["level"]["reserved_quantity"] == 8
+    assert body["level"]["available_quantity"] == 12
+
+
+def test_reject_reservation_above_available_quantity(client: TestClient) -> None:
+    product, warehouse = create_inventory_resources(client)
+    adjust_inventory(client, product["id"], warehouse["id"], 10)
+    create_reservation(client, product["id"], warehouse["id"], 6)
+
+    response = client.post(
+        "/api/v1/inventory/reservations",
+        json={
+            "product_id": product["id"],
+            "warehouse_id": warehouse["id"],
+            "quantity": 5,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Insufficient available inventory"}
+
+
+def test_release_inventory_reservation_restores_availability(
+    client: TestClient,
+) -> None:
+    product, warehouse = create_inventory_resources(client)
+    adjust_inventory(client, product["id"], warehouse["id"], 10)
+    reservation = create_reservation(client, product["id"], warehouse["id"], 4)
+
+    response = client.post(
+        f"/api/v1/inventory/reservations/{reservation['reservation']['id']}/release"
+    )
+    repeated_response = client.post(
+        f"/api/v1/inventory/reservations/{reservation['reservation']['id']}/release"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reservation"]["status"] == "released"
+    assert response.json()["level"]["reserved_quantity"] == 0
+    assert response.json()["level"]["available_quantity"] == 10
+    assert repeated_response.status_code == 409
+
+
+def test_consume_inventory_reservation_updates_stock_and_creates_movement(
+    client: TestClient,
+) -> None:
+    product, warehouse = create_inventory_resources(client)
+    adjust_inventory(client, product["id"], warehouse["id"], 10)
+    reservation = create_reservation(client, product["id"], warehouse["id"], 4)
+
+    response = client.post(
+        f"/api/v1/inventory/reservations/{reservation['reservation']['id']}/consume"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reservation"]["status"] == "consumed"
+    assert response.json()["level"]["quantity"] == 6
+    assert response.json()["level"]["reserved_quantity"] == 0
+    assert response.json()["level"]["available_quantity"] == 6
+    assert response.json()["movement"]["quantity_delta"] == -4
+    assert response.json()["movement"]["resulting_quantity"] == 6
+
+
+def test_reject_adjustment_that_would_reduce_reserved_stock(
+    client: TestClient,
+) -> None:
+    product, warehouse = create_inventory_resources(client)
+    adjust_inventory(client, product["id"], warehouse["id"], 10)
+    create_reservation(client, product["id"], warehouse["id"], 8)
+
+    response = client.post(
+        "/api/v1/inventory/adjustments",
+        json={
+            "product_id": product["id"],
+            "warehouse_id": warehouse["id"],
+            "quantity_delta": -3,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Insufficient available inventory"}
+
+
+def test_get_and_filter_inventory_reservations(client: TestClient) -> None:
+    organization = create_organization(client)
+    warehouse = create_warehouse(client, organization["id"])
+    first_product = create_product(client, organization["id"], sku="ITEM-001")
+    second_product = create_product(client, organization["id"], sku="ITEM-002")
+    adjust_inventory(client, first_product["id"], warehouse["id"], 10)
+    adjust_inventory(client, second_product["id"], warehouse["id"], 10)
+    first_reservation = create_reservation(
+        client, first_product["id"], warehouse["id"], 2
+    )
+    create_reservation(client, second_product["id"], warehouse["id"], 3)
+
+    list_response = client.get(
+        "/api/v1/inventory/reservations",
+        params={
+            "warehouse_id": warehouse["id"],
+            "product_id": first_product["id"],
+            "status": "active",
+        },
+    )
+    get_response = client.get(
+        f"/api/v1/inventory/reservations/{first_reservation['reservation']['id']}"
+    )
+
+    assert list_response.status_code == 200
+    assert list_response.json()["total"] == 1
+    assert list_response.json()["items"][0]["quantity"] == 2
+    assert get_response.status_code == 200
+    assert get_response.json()["id"] == first_reservation["reservation"]["id"]
+
+
+def test_reject_non_positive_reservation_quantity(client: TestClient) -> None:
+    product, warehouse = create_inventory_resources(client)
+
+    response = client.post(
+        "/api/v1/inventory/reservations",
+        json={
+            "product_id": product["id"],
+            "warehouse_id": warehouse["id"],
+            "quantity": 0,
         },
     )
 
