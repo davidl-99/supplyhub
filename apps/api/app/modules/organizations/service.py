@@ -7,6 +7,7 @@ from app.models.organization import Organization
 from app.modules.organizations.exceptions import (
     OrganizationNotFoundError,
     OrganizationSlugAlreadyExistsError,
+    OrganizationTypeCannotBeNarrowedError,
 )
 from app.modules.organizations.repository import OrganizationRepository
 from app.modules.organizations.schemas import (
@@ -29,6 +30,7 @@ class OrganizationService:
         organization = Organization(
             name=data.name,
             slug=data.slug,
+            organization_type=data.organization_type,
         )
 
         self.repository.add(organization)
@@ -64,12 +66,20 @@ class OrganizationService:
         changes = data.model_dump(exclude_unset=True)
 
         new_slug = changes.get("slug")
+        new_organization_type = changes.get("organization_type")
 
         if new_slug is not None and new_slug != organization.slug:
             existing_organization = self.repository.get_by_slug(new_slug)
 
             if existing_organization is not None:
                 raise OrganizationSlugAlreadyExistsError
+
+        if (
+            new_organization_type is not None
+            and new_organization_type != organization.organization_type
+            and new_organization_type != "both"
+        ):
+            raise OrganizationTypeCannotBeNarrowedError
 
         for field_name, value in changes.items():
             setattr(organization, field_name, value)

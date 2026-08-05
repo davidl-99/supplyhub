@@ -12,3 +12,7 @@ class ProductOrganizationNotFoundError(Exception):
 
 class ProductOrganizationInactiveError(Exception):
     pass
+
+
+class ProductOrganizationCannotSupplyError(Exception):
+    pass

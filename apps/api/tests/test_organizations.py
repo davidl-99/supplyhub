@@ -41,6 +41,7 @@ def test_create_organization(client: TestClient) -> None:
 
     assert body["name"] == payload["name"]
     assert body["slug"] == payload["slug"]
+    assert body["organization_type"] == "supplier"
     assert body["is_active"] is True
     assert body["id"] is not None
     assert body["created_at"] is not None
@@ -141,3 +142,50 @@ def test_get_unknown_organization(client: TestClient) -> None:
     assert response.json() == {
         "detail": "Organization not found",
     }
+
+
+def test_create_buyer_organization(client: TestClient) -> None:
+    payload = build_organization_payload()
+    payload["organization_type"] = "buyer"
+
+    response = client.post("/api/v1/organizations/", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["organization_type"] == "buyer"
+
+
+def test_expand_organization_type_to_both(client: TestClient) -> None:
+    organization = create_organization(client)
+
+    response = client.patch(
+        f"/api/v1/organizations/{organization['id']}",
+        json={"organization_type": "both"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["organization_type"] == "both"
+
+
+def test_reject_narrowing_organization_type(client: TestClient) -> None:
+    payload = build_organization_payload()
+    payload["organization_type"] = "both"
+    create_response = client.post("/api/v1/organizations/", json=payload)
+
+    response = client.patch(
+        f"/api/v1/organizations/{create_response.json()['id']}",
+        json={"organization_type": "buyer"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "Organization type can only be expanded to both"
+    }
+
+
+def test_reject_invalid_organization_type(client: TestClient) -> None:
+    payload = build_organization_payload()
+    payload["organization_type"] = "invalid"
+
+    response = client.post("/api/v1/organizations/", json=payload)
+
+    assert response.status_code == 422

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -27,6 +27,8 @@ class OrganizationCreate(BaseModel):
         pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
     )
 
+    organization_type: Literal["supplier", "buyer", "both"] = "supplier"
+
     model_config = ConfigDict(
         str_strip_whitespace=True,
     )
@@ -51,6 +53,8 @@ class OrganizationUpdate(BaseModel):
         pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
     )
 
+    organization_type: Literal["supplier", "buyer", "both"] | None = None
+
     model_config = ConfigDict(
         str_strip_whitespace=True,
     )
@@ -73,6 +77,7 @@ class OrganizationRead(BaseModel):
     id: uuid.UUID
     name: str
     slug: str
+    organization_type: Literal["supplier", "buyer", "both"]
     is_active: bool
     created_at: datetime
     updated_at: datetime

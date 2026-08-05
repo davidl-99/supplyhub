@@ -8,6 +8,7 @@ from app.modules.organizations.repository import OrganizationRepository
 from app.modules.warehouses.exceptions import (
     WarehouseCodeAlreadyExistsError,
     WarehouseNotFoundError,
+    WarehouseOrganizationCannotSupplyError,
     WarehouseOrganizationInactiveError,
     WarehouseOrganizationNotFoundError,
 )
@@ -33,6 +34,9 @@ class WarehouseService:
 
         if not organization.is_active:
             raise WarehouseOrganizationInactiveError
+
+        if organization.organization_type not in {"supplier", "both"}:
+            raise WarehouseOrganizationCannotSupplyError
 
         existing_warehouse = self.warehouse_repository.get_by_organization_and_code(
             organization_id=data.organization_id,

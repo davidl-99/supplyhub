@@ -4,3 +4,7 @@ class OrganizationSlugAlreadyExistsError(Exception):
 
 class OrganizationNotFoundError(Exception):
     pass
+
+
+class OrganizationTypeCannotBeNarrowedError(Exception):
+    pass

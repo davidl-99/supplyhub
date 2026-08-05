@@ -12,3 +12,7 @@ class WarehouseOrganizationNotFoundError(Exception):
 
 class WarehouseOrganizationInactiveError(Exception):
     pass
+
+
+class WarehouseOrganizationCannotSupplyError(Exception):
+    pass

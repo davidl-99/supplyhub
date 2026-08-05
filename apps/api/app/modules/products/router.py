@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db_session
 from app.modules.products.exceptions import (
     ProductNotFoundError,
+    ProductOrganizationCannotSupplyError,
     ProductOrganizationInactiveError,
     ProductOrganizationNotFoundError,
     ProductSkuAlreadyExistsError,
@@ -64,6 +65,11 @@ def create_product(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Organization is inactive",
+        ) from error
+    except ProductOrganizationCannotSupplyError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Organization cannot supply products",
         ) from error
     except ProductSkuAlreadyExistsError as error:
         raise HTTPException(

@@ -7,6 +7,7 @@ from app.models.product import Product
 from app.modules.organizations.repository import OrganizationRepository
 from app.modules.products.exceptions import (
     ProductNotFoundError,
+    ProductOrganizationCannotSupplyError,
     ProductOrganizationInactiveError,
     ProductOrganizationNotFoundError,
     ProductSkuAlreadyExistsError,
@@ -35,6 +36,9 @@ class ProductService:
 
         if not organization.is_active:
             raise ProductOrganizationInactiveError
+
+        if organization.organization_type not in {"supplier", "both"}:
+            raise ProductOrganizationCannotSupplyError
 
         existing_product = self.product_repository.get_by_organization_and_sku(
             organization_id=data.organization_id,

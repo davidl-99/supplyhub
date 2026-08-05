@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, Uuid, func, true
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    String,
+    Uuid,
+    func,
+    text,
+    true,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -9,6 +18,13 @@ from app.db.base import Base
 
 class Organization(Base):
     __tablename__ = "organizations"
+
+    __table_args__ = (
+        CheckConstraint(
+            "organization_type IN ('supplier', 'buyer', 'both')",
+            name="ck_organizations_type_valid",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -26,6 +42,13 @@ class Organization(Base):
         nullable=False,
         unique=True,
         index=True,
+    )
+
+    organization_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="supplier",
+        server_default=text("'supplier'"),
     )
 
     is_active: Mapped[bool] = mapped_column(

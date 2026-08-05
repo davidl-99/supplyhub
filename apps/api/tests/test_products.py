@@ -15,10 +15,14 @@ def build_organization_payload() -> dict[str, str]:
 
 def create_organization(
     client: TestClient,
+    *,
+    organization_type: str = "supplier",
 ) -> dict[str, object]:
+    payload = build_organization_payload()
+    payload["organization_type"] = organization_type
     response = client.post(
         "/api/v1/organizations/",
-        json=build_organization_payload(),
+        json=payload,
     )
 
     assert response.status_code == 201
@@ -73,6 +77,18 @@ def test_create_product(client: TestClient) -> None:
     assert Decimal(body["price"]) == Decimal("1299.99")
     assert body["currency"] == "USD"
     assert body["is_active"] is True
+
+
+def test_reject_product_for_buyer_organization(client: TestClient) -> None:
+    organization = create_organization(client, organization_type="buyer")
+
+    response = client.post(
+        "/api/v1/products/",
+        json=build_product_payload(str(organization["id"])),
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Organization cannot supply products"}
 
 
 def test_reject_duplicate_sku_in_same_organization(

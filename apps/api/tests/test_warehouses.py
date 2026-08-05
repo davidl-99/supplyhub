@@ -8,11 +8,16 @@ def create_organization(
     *,
     name: str = "Warehouse Organization",
     slug: str | None = None,
+    organization_type: str = "supplier",
 ) -> dict[str, object]:
     organization_slug = slug or f"warehouse-{uuid.uuid4().hex}"
     response = client.post(
         "/api/v1/organizations/",
-        json={"name": name, "slug": organization_slug},
+        json={
+            "name": name,
+            "slug": organization_slug,
+            "organization_type": organization_type,
+        },
     )
     assert response.status_code == 201
     return response.json()
@@ -57,6 +62,22 @@ def test_create_warehouse(client: TestClient) -> None:
     assert body["organization_id"] == organization["id"]
     assert body["code"] == "BOG-01"
     assert body["is_active"] is True
+
+
+def test_reject_warehouse_for_buyer_organization(client: TestClient) -> None:
+    organization = create_organization(client, organization_type="buyer")
+
+    response = client.post(
+        "/api/v1/warehouses/",
+        json={
+            "organization_id": organization["id"],
+            "code": "BUYER-01",
+            "name": "Buyer Warehouse",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Organization cannot manage warehouses"}
 
 
 def test_reject_duplicate_code_in_same_organization(client: TestClient) -> None:

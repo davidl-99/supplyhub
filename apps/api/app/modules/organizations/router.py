@@ -8,6 +8,7 @@ from app.db.session import get_db_session
 from app.modules.organizations.exceptions import (
     OrganizationNotFoundError,
     OrganizationSlugAlreadyExistsError,
+    OrganizationTypeCannotBeNarrowedError,
 )
 from app.modules.organizations.schemas import (
     OrganizationCreate,
@@ -112,6 +113,11 @@ def update_organization(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Organization slug already exists",
+        ) from error
+    except OrganizationTypeCannotBeNarrowedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Organization type can only be expanded to both",
         ) from error
 
     return OrganizationRead.model_validate(organization)

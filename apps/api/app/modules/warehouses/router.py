@@ -8,6 +8,7 @@ from app.db.session import get_db_session
 from app.modules.warehouses.exceptions import (
     WarehouseCodeAlreadyExistsError,
     WarehouseNotFoundError,
+    WarehouseOrganizationCannotSupplyError,
     WarehouseOrganizationInactiveError,
     WarehouseOrganizationNotFoundError,
 )
@@ -44,6 +45,11 @@ def create_warehouse(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Organization is inactive",
+        ) from error
+    except WarehouseOrganizationCannotSupplyError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Organization cannot manage warehouses",
         ) from error
     except WarehouseCodeAlreadyExistsError as error:
         raise HTTPException(
