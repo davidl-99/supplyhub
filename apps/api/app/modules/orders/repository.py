@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.order import Order
+from app.models.order import Order, OrderStatusEvent
 
 
 class OrderRepository:
@@ -12,6 +12,9 @@ class OrderRepository:
 
     def add(self, order: Order) -> None:
         self.session.add(order)
+
+    def add_status_event(self, event: OrderStatusEvent) -> None:
+        self.session.add(event)
 
     def get_by_id(
         self, order_id: uuid.UUID, *, for_update: bool = False
@@ -49,6 +52,28 @@ class OrderRepository:
             select(Order)
             .where(*conditions)
             .order_by(Order.created_at.desc(), Order.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(self.session.scalars(statement).all()), total
+
+    def list_status_events(
+        self,
+        order_id: uuid.UUID,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[OrderStatusEvent], int]:
+        condition = OrderStatusEvent.order_id == order_id
+        total = (
+            self.session.scalar(
+                select(func.count()).select_from(OrderStatusEvent).where(condition)
+            )
+            or 0
+        )
+        statement = (
+            select(OrderStatusEvent)
+            .where(condition)
+            .order_by(OrderStatusEvent.created_at.asc(), OrderStatusEvent.id.asc())
             .offset(offset)
             .limit(limit)
         )

@@ -76,3 +76,27 @@ class OrderListRead(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class OrderStatusEventRead(BaseModel):
+    id: uuid.UUID
+    order_id: uuid.UUID
+    from_status: Literal["draft", "placed", "cancelled", "fulfilled"] | None
+    to_status: Literal["draft", "placed", "cancelled", "fulfilled"]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrderStatusHistoryQuery(BaseModel):
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class OrderStatusHistoryRead(BaseModel):
+    items: list[OrderStatusEventRead]
+    total: int
+    limit: int
+    offset: int

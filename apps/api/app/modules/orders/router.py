@@ -28,12 +28,16 @@ from app.modules.orders.schemas import (
     OrderListQuery,
     OrderListRead,
     OrderRead,
+    OrderStatusEventRead,
+    OrderStatusHistoryQuery,
+    OrderStatusHistoryRead,
 )
 from app.modules.orders.service import OrderService
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 OrderFilters = Annotated[OrderListQuery, Query()]
+OrderHistoryFilters = Annotated[OrderStatusHistoryQuery, Query()]
 
 ORDER_ERROR_RESPONSES: dict[type[OrderError], tuple[int, str]] = {
     OrderNotFoundError: (status.HTTP_404_NOT_FOUND, "Order not found"),
@@ -116,6 +120,24 @@ def get_order(order_id: uuid.UUID, session: DatabaseSession) -> OrderRead:
     except OrderError as error:
         raise_order_http_error(error)
     return OrderRead.model_validate(order)
+
+
+@router.get("/{order_id}/history", response_model=OrderStatusHistoryRead)
+def list_order_status_history(
+    order_id: uuid.UUID,
+    session: DatabaseSession,
+    filters: OrderHistoryFilters,
+) -> OrderStatusHistoryRead:
+    try:
+        events, total = OrderService(session).list_status_history(order_id, filters)
+    except OrderError as error:
+        raise_order_http_error(error)
+    return OrderStatusHistoryRead(
+        items=[OrderStatusEventRead.model_validate(event) for event in events],
+        total=total,
+        limit=filters.limit,
+        offset=filters.offset,
+    )
 
 
 @router.post("/{order_id}/place", response_model=OrderRead)

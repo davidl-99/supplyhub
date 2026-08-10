@@ -142,3 +142,38 @@ class OrderLine(Base):
     @property
     def line_total(self) -> Decimal:
         return self.unit_price * self.quantity
+
+
+class OrderStatusEvent(Base):
+    __tablename__ = "order_status_events"
+
+    __table_args__ = (
+        CheckConstraint(
+            "from_status IS NULL OR "
+            "from_status IN ('draft', 'placed', 'cancelled', 'fulfilled')",
+            name="ck_order_status_events_from_status_valid",
+        ),
+        CheckConstraint(
+            "to_status IN ('draft', 'placed', 'cancelled', 'fulfilled')",
+            name="ck_order_status_events_to_status_valid",
+        ),
+        CheckConstraint(
+            "from_status IS NULL OR from_status <> to_status",
+            name="ck_order_status_events_status_changed",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("orders.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    from_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

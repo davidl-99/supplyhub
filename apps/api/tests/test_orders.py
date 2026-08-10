@@ -364,3 +364,74 @@ def test_reject_cancellation_for_fulfilled_order(client: TestClient) -> None:
 
     assert response.status_code == 409
     assert response.json() == {"detail": "Fulfilled orders cannot be cancelled"}
+
+
+def test_order_history_records_full_lifecycle(client: TestClient) -> None:
+    buyer, supplier, product, warehouse = create_order_resources(client)
+    adjust_inventory(client, product["id"], warehouse["id"], 5)
+    order = create_order(
+        client,
+        buyer["id"],
+        supplier["id"],
+        [
+            {
+                "product_id": product["id"],
+                "warehouse_id": warehouse["id"],
+                "quantity": 2,
+            }
+        ],
+    )
+    client.post(f"/api/v1/orders/{order['id']}/place")
+    client.post(f"/api/v1/orders/{order['id']}/fulfill")
+
+    response = client.get(f"/api/v1/orders/{order['id']}/history")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 3
+    assert [
+        (event["from_status"], event["to_status"]) for event in response.json()["items"]
+    ] == [
+        (None, "draft"),
+        ("draft", "placed"),
+        ("placed", "fulfilled"),
+    ]
+
+
+def test_cancelled_order_history_is_append_only_and_paginated(
+    client: TestClient,
+) -> None:
+    buyer, supplier, product, warehouse = create_order_resources(client)
+    order = create_order(
+        client,
+        buyer["id"],
+        supplier["id"],
+        [
+            {
+                "product_id": product["id"],
+                "warehouse_id": warehouse["id"],
+                "quantity": 1,
+            }
+        ],
+    )
+    client.post(f"/api/v1/orders/{order['id']}/cancel")
+    client.post(f"/api/v1/orders/{order['id']}/cancel")
+
+    response = client.get(
+        f"/api/v1/orders/{order['id']}/history",
+        params={"limit": 1, "offset": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+    assert response.json()["limit"] == 1
+    assert response.json()["offset"] == 1
+    assert len(response.json()["items"]) == 1
+    assert response.json()["items"][0]["from_status"] == "draft"
+    assert response.json()["items"][0]["to_status"] == "cancelled"
+
+
+def test_get_history_for_unknown_order(client: TestClient) -> None:
+    response = client.get(f"/api/v1/orders/{uuid.uuid4()}/history")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Order not found"}

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.models.inventory import InventoryReservation, StockMovement
-from app.models.order import Order, OrderLine
+from app.models.order import Order, OrderLine, OrderStatusEvent
 from app.modules.inventory.repository import InventoryRepository
 from app.modules.orders.exceptions import (
     OrderBuyerCannotBuyError,
@@ -24,7 +24,11 @@ from app.modules.orders.exceptions import (
     OrderWarehouseUnavailableError,
 )
 from app.modules.orders.repository import OrderRepository
-from app.modules.orders.schemas import OrderCreate, OrderListQuery
+from app.modules.orders.schemas import (
+    OrderCreate,
+    OrderListQuery,
+    OrderStatusHistoryQuery,
+)
 from app.modules.organizations.repository import OrganizationRepository
 from app.modules.products.repository import ProductRepository
 from app.modules.warehouses.repository import WarehouseRepository
@@ -94,6 +98,8 @@ class OrderService:
             lines=lines,
         )
         self.order_repository.add(order)
+        self.session.flush()
+        self._add_status_event(order.id, None, "draft")
         self.session.commit()
         self.session.refresh(order)
         return order
@@ -109,6 +115,18 @@ class OrderService:
             buyer_organization_id=filters.buyer_organization_id,
             supplier_organization_id=filters.supplier_organization_id,
             status=filters.status,
+            limit=filters.limit,
+            offset=filters.offset,
+        )
+
+    def list_status_history(
+        self,
+        order_id: uuid.UUID,
+        filters: OrderStatusHistoryQuery,
+    ) -> tuple[list[OrderStatusEvent], int]:
+        self.get_by_id(order_id)
+        return self.order_repository.list_status_events(
+            order_id=order_id,
             limit=filters.limit,
             offset=filters.offset,
         )
@@ -157,6 +175,7 @@ class OrderService:
 
         order.status = "placed"
         order.placed_at = datetime.now(UTC)
+        self._add_status_event(order.id, "draft", "placed")
         self.session.commit()
         self.session.refresh(order)
         return order
@@ -187,8 +206,10 @@ class OrderService:
                 level.reserved_quantity -= reservation.quantity
                 reservation.status = "released"
 
+        previous_status = order.status
         order.status = "cancelled"
         order.cancelled_at = datetime.now(UTC)
+        self._add_status_event(order.id, previous_status, "cancelled")
         self.session.commit()
         self.session.refresh(order)
         return order
@@ -230,6 +251,7 @@ class OrderService:
 
         order.status = "fulfilled"
         order.fulfilled_at = datetime.now(UTC)
+        self._add_status_event(order.id, "placed", "fulfilled")
         self.session.commit()
         self.session.refresh(order)
         return order
@@ -239,3 +261,18 @@ class OrderService:
         if order is None:
             raise OrderNotFoundError
         return order
+
+    def _add_status_event(
+        self,
+        order_id: uuid.UUID,
+        from_status: str | None,
+        to_status: str,
+    ) -> None:
+        self.order_repository.add_status_event(
+            OrderStatusEvent(
+                order_id=order_id,
+                from_status=from_status,
+                to_status=to_status,
+                created_at=datetime.now(UTC),
+            )
+        )
