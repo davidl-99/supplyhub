@@ -3,15 +3,17 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app.models.inventory import InventoryReservation
+from app.models.inventory import InventoryReservation, StockMovement
 from app.models.order import Order, OrderLine
 from app.modules.inventory.repository import InventoryRepository
 from app.modules.orders.exceptions import (
     OrderBuyerCannotBuyError,
+    OrderCannotCancelError,
     OrderCurrencyMismatchError,
     OrderInsufficientInventoryError,
     OrderNotDraftError,
     OrderNotFoundError,
+    OrderNotPlacedError,
     OrderOrganizationInactiveError,
     OrderOrganizationNotFoundError,
     OrderProductNotFoundError,
@@ -164,6 +166,9 @@ class OrderService:
         if order.status == "cancelled":
             return order
 
+        if order.status == "fulfilled":
+            raise OrderCannotCancelError
+
         if order.status == "placed":
             for line in order.lines:
                 if line.reservation_id is None:
@@ -184,6 +189,47 @@ class OrderService:
 
         order.status = "cancelled"
         order.cancelled_at = datetime.now(UTC)
+        self.session.commit()
+        self.session.refresh(order)
+        return order
+
+    def fulfill(self, order_id: uuid.UUID) -> Order:
+        order = self._get_locked(order_id)
+        if order.status != "placed":
+            raise OrderNotPlacedError
+
+        for line in sorted(
+            order.lines,
+            key=lambda item: (item.warehouse_id, item.product_id),
+        ):
+            if line.reservation_id is None:
+                raise RuntimeError("Placed order line has no reservation")
+            reservation = self.inventory_repository.get_reservation(
+                line.reservation_id,
+                for_update=True,
+            )
+            if reservation is None or reservation.status != "active":
+                raise RuntimeError("Placed order reservation is not active")
+            level = self.inventory_repository.lock_level_by_id(
+                reservation.inventory_level_id
+            )
+            if level is None:
+                raise RuntimeError("Reservation inventory level not found")
+
+            level.quantity -= reservation.quantity
+            level.reserved_quantity -= reservation.quantity
+            reservation.status = "consumed"
+            self.inventory_repository.add_movement(
+                StockMovement(
+                    inventory_level_id=level.id,
+                    quantity_delta=-reservation.quantity,
+                    resulting_quantity=level.quantity,
+                    reason=f"Fulfilled order {order.id} line {line.id}",
+                )
+            )
+
+        order.status = "fulfilled"
+        order.fulfilled_at = datetime.now(UTC)
         self.session.commit()
         self.session.refresh(order)
         return order

@@ -28,7 +28,7 @@ class Order(Base):
             name="ck_orders_organizations_different",
         ),
         CheckConstraint(
-            "status IN ('draft', 'placed', 'cancelled')",
+            "status IN ('draft', 'placed', 'cancelled', 'fulfilled')",
             name="ck_orders_status_valid",
         ),
     )
@@ -69,6 +69,9 @@ class Order(Base):
         DateTime(timezone=True), nullable=True
     )
     cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    fulfilled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     lines: Mapped[list["OrderLine"]] = relationship(

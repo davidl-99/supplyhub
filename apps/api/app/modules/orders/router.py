@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db_session
 from app.modules.orders.exceptions import (
     OrderBuyerCannotBuyError,
+    OrderCannotCancelError,
     OrderCurrencyMismatchError,
     OrderError,
     OrderInsufficientInventoryError,
     OrderNotDraftError,
     OrderNotFoundError,
+    OrderNotPlacedError,
     OrderOrganizationInactiveError,
     OrderOrganizationNotFoundError,
     OrderProductNotFoundError,
@@ -70,6 +72,11 @@ ORDER_ERROR_RESPONSES: dict[type[OrderError], tuple[int, str]] = {
         "All order lines must use the same currency",
     ),
     OrderNotDraftError: (status.HTTP_409_CONFLICT, "Order is not a draft"),
+    OrderNotPlacedError: (status.HTTP_409_CONFLICT, "Order is not placed"),
+    OrderCannotCancelError: (
+        status.HTTP_409_CONFLICT,
+        "Fulfilled orders cannot be cancelled",
+    ),
     OrderInsufficientInventoryError: (
         status.HTTP_409_CONFLICT,
         "Insufficient available inventory",
@@ -124,6 +131,15 @@ def place_order(order_id: uuid.UUID, session: DatabaseSession) -> OrderRead:
 def cancel_order(order_id: uuid.UUID, session: DatabaseSession) -> OrderRead:
     try:
         order = OrderService(session).cancel(order_id)
+    except OrderError as error:
+        raise_order_http_error(error)
+    return OrderRead.model_validate(order)
+
+
+@router.post("/{order_id}/fulfill", response_model=OrderRead)
+def fulfill_order(order_id: uuid.UUID, session: DatabaseSession) -> OrderRead:
+    try:
+        order = OrderService(session).fulfill(order_id)
     except OrderError as error:
         raise_order_http_error(error)
     return OrderRead.model_validate(order)

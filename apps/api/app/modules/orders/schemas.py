@@ -48,7 +48,7 @@ class OrderRead(BaseModel):
     id: uuid.UUID
     buyer_organization_id: uuid.UUID
     supplier_organization_id: uuid.UUID
-    status: Literal["draft", "placed", "cancelled"]
+    status: Literal["draft", "placed", "cancelled", "fulfilled"]
     currency: str
     total: Decimal
     lines: list[OrderLineRead]
@@ -56,6 +56,7 @@ class OrderRead(BaseModel):
     updated_at: datetime
     placed_at: datetime | None
     cancelled_at: datetime | None
+    fulfilled_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -63,7 +64,7 @@ class OrderRead(BaseModel):
 class OrderListQuery(BaseModel):
     buyer_organization_id: uuid.UUID | None = None
     supplier_organization_id: uuid.UUID | None = None
-    status: Literal["draft", "placed", "cancelled"] | None = None
+    status: Literal["draft", "placed", "cancelled", "fulfilled"] | None = None
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
 

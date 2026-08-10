@@ -50,5 +50,13 @@ class OrderNotDraftError(OrderError):
     pass
 
 
+class OrderNotPlacedError(OrderError):
+    pass
+
+
+class OrderCannotCancelError(OrderError):
+    pass
+
+
 class OrderInsufficientInventoryError(OrderError):
     pass

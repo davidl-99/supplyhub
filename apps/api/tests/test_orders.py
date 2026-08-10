@@ -271,3 +271,96 @@ def test_list_orders_by_buyer_and_status(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["id"] == order["id"]
+
+
+def test_fulfill_order_consumes_reservation_and_creates_movement(
+    client: TestClient,
+) -> None:
+    buyer, supplier, product, warehouse = create_order_resources(client)
+    adjust_inventory(client, product["id"], warehouse["id"], 10)
+    order = create_order(
+        client,
+        buyer["id"],
+        supplier["id"],
+        [
+            {
+                "product_id": product["id"],
+                "warehouse_id": warehouse["id"],
+                "quantity": 4,
+            }
+        ],
+    )
+    placed_order = client.post(f"/api/v1/orders/{order['id']}/place").json()
+    reservation_id = placed_order["lines"][0]["reservation_id"]
+
+    response = client.post(f"/api/v1/orders/{order['id']}/fulfill")
+    level_response = client.get(
+        f"/api/v1/inventory/levels/{warehouse['id']}/{product['id']}"
+    )
+    reservation_response = client.get(
+        f"/api/v1/inventory/reservations/{reservation_id}"
+    )
+    movements_response = client.get(
+        "/api/v1/inventory/movements",
+        params={"warehouse_id": warehouse["id"], "product_id": product["id"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "fulfilled"
+    assert response.json()["fulfilled_at"] is not None
+    assert level_response.json()["quantity"] == 6
+    assert level_response.json()["reserved_quantity"] == 0
+    assert level_response.json()["available_quantity"] == 6
+    assert reservation_response.json()["status"] == "consumed"
+    fulfillment_movement = next(
+        item
+        for item in movements_response.json()["items"]
+        if item["quantity_delta"] == -4
+    )
+    assert fulfillment_movement["resulting_quantity"] == 6
+    assert fulfillment_movement["reason"].startswith("Fulfilled order")
+
+
+def test_reject_fulfillment_for_draft_order(client: TestClient) -> None:
+    buyer, supplier, product, warehouse = create_order_resources(client)
+    order = create_order(
+        client,
+        buyer["id"],
+        supplier["id"],
+        [
+            {
+                "product_id": product["id"],
+                "warehouse_id": warehouse["id"],
+                "quantity": 1,
+            }
+        ],
+    )
+
+    response = client.post(f"/api/v1/orders/{order['id']}/fulfill")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Order is not placed"}
+
+
+def test_reject_cancellation_for_fulfilled_order(client: TestClient) -> None:
+    buyer, supplier, product, warehouse = create_order_resources(client)
+    adjust_inventory(client, product["id"], warehouse["id"], 5)
+    order = create_order(
+        client,
+        buyer["id"],
+        supplier["id"],
+        [
+            {
+                "product_id": product["id"],
+                "warehouse_id": warehouse["id"],
+                "quantity": 2,
+            }
+        ],
+    )
+    client.post(f"/api/v1/orders/{order['id']}/place")
+    client.post(f"/api/v1/orders/{order['id']}/fulfill")
+
+    response = client.post(f"/api/v1/orders/{order['id']}/cancel")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Fulfilled orders cannot be cancelled"}
