@@ -21,4 +21,5 @@ coverage/
 Thumbs.db
 
 # .md files
+docs/
 *.md

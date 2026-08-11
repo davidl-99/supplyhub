@@ -18,6 +18,8 @@ os.environ["POSTGRES_PASSWORD"] = os.getenv(
     "TEST_POSTGRES_PASSWORD",
     "supplyhub_test_password",
 )
+os.environ["AUTH_SECRET_KEY"] = "test-only-auth-secret-key-not-for-production-use"
+os.environ["AUTH_ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"
 
 from app.db.session import engine, get_db_session
 from app.main import app

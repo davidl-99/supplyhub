@@ -4,9 +4,27 @@ SupplyHub is a B2B platform where supplier organizations can manage their produc
 
 ## Project status
 
-The backend currently supports users, organization-scoped memberships, typed supplier and buyer organizations, product, warehouse, inventory, and order management, including Argon2 password hashing, search, filtering, pagination, soft deactivation, stock levels, auditable stock adjustments, filtered stock movement history, concurrency-safe inventory reservations, immutable order price snapshots, atomic order placement, cancellation, full fulfillment, and append-only order status history. Automated tests run against a dedicated PostgreSQL test database.
+The backend currently supports JWT authentication, users, organization-scoped memberships, typed supplier and buyer organizations, product, warehouse, inventory, and order management, including Argon2 password hashing, search, filtering, pagination, soft deactivation, stock levels, auditable stock adjustments, filtered stock movement history, concurrency-safe inventory reservations, immutable order price snapshots, atomic order placement, cancellation, full fulfillment, and append-only order status history. Automated tests run against a dedicated PostgreSQL test database.
+
+## Project documentation
+
+- [Product vision](docs/PRODUCT_VISION.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Learning path](docs/LEARNING_PATH.md)
+- [Architecture decision records](docs/adr/README.md)
+- [Project handoff](SUPPLYHUB_HANDOFF.md)
+- [Coding agent instructions](AGENTS.md)
 
 ## Local development
+
+Copy `.env.example` to `.env`. Generate a local authentication secret with:
+
+```powershell
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Store the generated value in `AUTH_SECRET_KEY`. Never commit the local `.env` file or reuse this development secret in another environment.
 
 Start the development and test databases from the repository root:
 

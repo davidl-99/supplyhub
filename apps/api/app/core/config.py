@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -15,6 +16,8 @@ class Settings(BaseSettings):
     postgres_db: str
     postgres_user: str
     postgres_password: str
+    auth_secret_key: SecretStr
+    auth_access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
