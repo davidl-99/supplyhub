@@ -17,6 +17,7 @@ from app.modules.identity.exceptions import (
     UserNotFoundError,
 )
 from app.modules.identity.repository import IdentityRepository
+from app.modules.identity.roles import SUPPLIER_ROLES, MembershipRole
 from app.modules.identity.schemas import (
     MembershipCreate,
     MembershipListQuery,
@@ -24,8 +25,6 @@ from app.modules.identity.schemas import (
     UserCreate,
 )
 from app.modules.organizations.repository import OrganizationRepository
-
-SUPPLIER_ROLES = {"catalog_manager", "warehouse_operator"}
 
 
 class IdentityService:
@@ -143,7 +142,7 @@ class IdentityService:
             raise MembershipNotFoundError
         return membership
 
-    def _validate_role(self, organization: Organization, role: str) -> None:
+    def _validate_role(self, organization: Organization, role: MembershipRole) -> None:
         if role == "buyer" and organization.organization_type not in {"buyer", "both"}:
             raise MembershipRoleIncompatibleError
         if role in SUPPLIER_ROLES and organization.organization_type not in {

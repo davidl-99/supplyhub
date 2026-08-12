@@ -1,16 +1,10 @@
 import uuid
 from datetime import datetime
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
-MembershipRole = Literal[
-    "organization_admin",
-    "catalog_manager",
-    "warehouse_operator",
-    "buyer",
-    "viewer",
-]
+from app.modules.identity.roles import MembershipRole
 
 
 class UserCreate(BaseModel):

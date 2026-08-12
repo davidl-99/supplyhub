@@ -6,16 +6,6 @@ SupplyHub is a B2B platform where supplier organizations can manage their produc
 
 The backend currently supports JWT authentication, users, organization-scoped memberships, typed supplier and buyer organizations, product, warehouse, inventory, and order management, including Argon2 password hashing, search, filtering, pagination, soft deactivation, stock levels, auditable stock adjustments, filtered stock movement history, concurrency-safe inventory reservations, immutable order price snapshots, atomic order placement, cancellation, full fulfillment, and append-only order status history. Automated tests run against a dedicated PostgreSQL test database.
 
-## Project documentation
-
-- [Product vision](docs/PRODUCT_VISION.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Learning path](docs/LEARNING_PATH.md)
-- [Architecture decision records](docs/adr/README.md)
-- [Project handoff](SUPPLYHUB_HANDOFF.md)
-- [Coding agent instructions](AGENTS.md)
-
 ## Local development
 
 Copy `.env.example` to `.env`. Generate a local authentication secret with:
@@ -148,24 +138,35 @@ The following features will not be developed initially:
 
 These features may be evaluated after the first stable version is completed.
 
-## Initial architecture
+## Architecture
 
-The project will begin as a modular monolith.
+SupplyHub is implemented as a modular monolith: one deployable backend application divided into explicit business modules.
 
-This means that there will be a single backend application, but it will be internally divided into independent modules.
+Backend modules follow a consistent request flow:
 
-The initial modules will be:
+```text
+HTTP request
+    -> router
+    -> service
+    -> repository
+    -> SQLAlchemy session
+    -> PostgreSQL
+```
+
+Routers handle HTTP concerns and dependency injection, services enforce business rules and transaction outcomes, and repositories own database queries.
+
+Current business modules include:
 
 * Authentication.
 * Organizations.
-* Users and permissions.
+* Identity and organization memberships.
 * Catalog.
 * Inventory.
 * Orders.
-* Search.
-* Audit.
 
-Microservices will not be used initially because the business rules must first be understood and implemented correctly within an application that is easier to develop, test, and operate.
+PostgreSQL is authoritative for business data. Search indexes, caches, and future read models must remain rebuildable projections. Microservices will only be introduced when a module has clear data ownership, stable contracts, independent operational requirements, and documented failure-recovery behavior.
+
+Orders and Inventory intentionally share a transactional boundary while order placement, reservation, cancellation, and fulfillment require atomic consistency. Notifications and Search are potential future extraction candidates because their workloads can be asynchronous or projection-based.
 
 ## Planned technologies
 
@@ -186,8 +187,9 @@ Microservices will not be used initially because the business rules must first b
 ### Storage
 
 * PostgreSQL as the primary source of truth.
-* MongoDB for audit events.
-* OpenSearch for advanced product search.
+* MongoDB for the asynchronous audit and operational event-history projection.
+* OpenSearch for advanced product search when the PostgreSQL baseline no longer satisfies the required search experience.
+* Additional datastores only when demonstrated access, retention, or scaling requirements justify them.
 
 ### Infrastructure
 
@@ -211,16 +213,9 @@ PostgreSQL will store the primary business data:
 
 PostgreSQL will be the primary source of truth for the system.
 
-### MongoDB
+### Audit and derived data
 
-MongoDB will be used to store audit events and operation history.
-
-For example:
-
-* Who modified a product.
-* What information changed.
-* When the change occurred.
-* Which values existed before and after the change.
+Audit events will record who performed an action, which organization and resource were affected, when it occurred, and safe metadata describing the change. PostgreSQL will store the transactional outbox so business state and event publication intent commit atomically. Asynchronous workers will project those events into MongoDB, which will provide a flexible document model for operational audit history, independent retention, and audit-focused queries. Consumers must be idempotent, and the MongoDB projection must be replayable and rebuildable from durable events.
 
 ### OpenSearch
 
@@ -237,23 +232,21 @@ It will support:
 
 OpenSearch will not be the primary source of truth. Its indexes must be rebuildable from the information stored in PostgreSQL.
 
-## Initial roadmap
+## Roadmap
 
-1. Define the product scope.
-2. Prepare the repository structure.
-3. Create the local environment with Docker.
-4. Create the backend application.
-5. Connect PostgreSQL.
-6. Implement the product module.
-7. Create the frontend application.
-8. Implement authentication and organizations.
-9. Implement inventory management.
-10. Implement order management.
-11. Integrate OpenSearch.
-12. Integrate MongoDB.
-13. Add asynchronous processing.
-14. Add automated tests.
-15. Configure continuous integration and deployment.
+Development follows small, verified milestones. The planned sequence is:
+
+1. Complete authentication, centralized permissions, and multi-tenant isolation.
+2. Add secure signup, email verification, invitations, password recovery, and revocable browser sessions.
+3. Introduce a deliberately limited public product catalog while keeping operational inventory and warehouses private.
+4. Build the React and TypeScript buyer and supplier experiences.
+5. Extend the commercial order lifecycle with confirmation, shipping, delivery, partial fulfillment, and safe retries.
+6. Add immutable audit events, a PostgreSQL transactional outbox, asynchronous workers, and an idempotent MongoDB audit projection with replay and reconciliation support.
+7. Add notifications, signed webhooks, and OpenSearch as independently recoverable asynchronous projections.
+8. Add structured logs, metrics, traces, dashboards, alerts, and reliability exercises.
+9. Establish staging and production delivery, secret management, backups, restoration tests, security scanning, and rollback procedures.
+10. Extract independently deployable services only when stable boundaries and operational requirements justify the added complexity.
+11. Add commercial SaaS capabilities such as subscriptions, plan limits, integrations, support tooling, and privacy workflows.
 
 ## Project principles
 
@@ -263,7 +256,9 @@ OpenSearch will not be the primary source of truth. Its indexes must be rebuilda
 * PostgreSQL will be the primary source of truth.
 * Errors should be handled explicitly.
 * The architecture should support maintainability.
-* Artificial intelligence tools will be used as assistants, not as substitutes for technical understanding.
+* Private business data must be protected by server-side authentication, tenant isolation, and permission checks.
+* Critical commands and asynchronous consumers must tolerate safe retries without duplicate effects.
+* Public API representations must be intentionally separated from internal operational schemas.
 
 ## Author
 
