@@ -32,3 +32,7 @@ class MembershipOrganizationInactiveError(IdentityError):
 
 class MembershipRoleIncompatibleError(IdentityError):
     pass
+
+
+class MembershipLastAdministratorError(IdentityError):
+    pass

@@ -13,11 +13,21 @@ class OrganizationRepository:
     def get_by_id(
         self,
         organization_id: uuid.UUID,
+        *,
+        for_update: bool = False,
     ) -> Organization | None:
-        return self.session.get(
-            Organization,
-            organization_id,
+        if not for_update:
+            return self.session.get(
+                Organization,
+                organization_id,
+            )
+
+        statement = (
+            select(Organization)
+            .where(Organization.id == organization_id)
+            .with_for_update()
         )
+        return self.session.scalar(statement)
 
     def get_by_slug(self, slug: str) -> Organization | None:
         statement = select(Organization).where(

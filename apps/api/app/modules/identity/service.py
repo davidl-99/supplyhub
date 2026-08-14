@@ -8,6 +8,7 @@ from app.models.identity import OrganizationMembership, User
 from app.models.organization import Organization
 from app.modules.identity.exceptions import (
     MembershipAlreadyExistsError,
+    MembershipLastAdministratorError,
     MembershipNotFoundError,
     MembershipOrganizationInactiveError,
     MembershipOrganizationNotFoundError,
@@ -97,11 +98,20 @@ class IdentityService:
         membership_id: uuid.UUID,
         data: MembershipUpdate,
     ) -> OrganizationMembership:
-        organization = self._get_active_organization(organization_id)
+        organization = self._get_active_organization(
+            organization_id,
+            for_update=True,
+        )
         membership = self._get_membership(organization_id, membership_id)
         if data.role is None:
             raise RuntimeError("Membership role was not provided")
         self._validate_role(organization, data.role)
+        if (
+            membership.is_active
+            and membership.role == "organization_admin"
+            and data.role != "organization_admin"
+        ):
+            self._ensure_other_active_administrator(membership)
         membership.role = data.role
         self.session.commit()
         self.session.refresh(membership)
@@ -112,22 +122,41 @@ class IdentityService:
         organization_id: uuid.UUID,
         membership_id: uuid.UUID,
     ) -> OrganizationMembership:
+        self._get_organization(organization_id, for_update=True)
         membership = self._get_membership(organization_id, membership_id)
         if not membership.is_active:
             return membership
+        if membership.role == "organization_admin":
+            self._ensure_other_active_administrator(membership)
         membership.is_active = False
         self.session.commit()
         self.session.refresh(membership)
         return membership
 
-    def _get_organization(self, organization_id: uuid.UUID) -> Organization:
-        organization = self.organization_repository.get_by_id(organization_id)
+    def _get_organization(
+        self,
+        organization_id: uuid.UUID,
+        *,
+        for_update: bool = False,
+    ) -> Organization:
+        organization = self.organization_repository.get_by_id(
+            organization_id,
+            for_update=for_update,
+        )
         if organization is None:
             raise MembershipOrganizationNotFoundError
         return organization
 
-    def _get_active_organization(self, organization_id: uuid.UUID) -> Organization:
-        organization = self._get_organization(organization_id)
+    def _get_active_organization(
+        self,
+        organization_id: uuid.UUID,
+        *,
+        for_update: bool = False,
+    ) -> Organization:
+        organization = self._get_organization(
+            organization_id,
+            for_update=for_update,
+        )
         if not organization.is_active:
             raise MembershipOrganizationInactiveError
         return organization
@@ -150,6 +179,16 @@ class IdentityService:
             "both",
         }:
             raise MembershipRoleIncompatibleError
+
+    def _ensure_other_active_administrator(
+        self,
+        membership: OrganizationMembership,
+    ) -> None:
+        if not self.repository.has_other_active_administrator(
+            membership.organization_id,
+            membership.id,
+        ):
+            raise MembershipLastAdministratorError
 
     def _commit(self, conflict_error: type[Exception]) -> None:
         try:

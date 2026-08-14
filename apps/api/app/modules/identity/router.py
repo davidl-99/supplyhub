@@ -11,6 +11,7 @@ from app.modules.authorization.permissions import Permission
 from app.modules.identity.exceptions import (
     IdentityError,
     MembershipAlreadyExistsError,
+    MembershipLastAdministratorError,
     MembershipNotFoundError,
     MembershipOrganizationInactiveError,
     MembershipOrganizationNotFoundError,
@@ -43,15 +44,30 @@ MembershipReader = Annotated[
 ]
 MembershipCreator = Annotated[
     OrganizationMembership,
-    Depends(require_permission(Permission.MEMBERSHIP_CREATE)),
+    Depends(
+        require_permission(
+            Permission.MEMBERSHIP_CREATE,
+            lock_organization=True,
+        )
+    ),
 ]
 MembershipUpdater = Annotated[
     OrganizationMembership,
-    Depends(require_permission(Permission.MEMBERSHIP_UPDATE)),
+    Depends(
+        require_permission(
+            Permission.MEMBERSHIP_UPDATE,
+            lock_organization=True,
+        )
+    ),
 ]
 MembershipDeactivator = Annotated[
     OrganizationMembership,
-    Depends(require_permission(Permission.MEMBERSHIP_DEACTIVATE)),
+    Depends(
+        require_permission(
+            Permission.MEMBERSHIP_DEACTIVATE,
+            lock_organization=True,
+        )
+    ),
 ]
 
 IDENTITY_ERROR_RESPONSES: dict[type[IdentityError], tuple[int, str]] = {
@@ -77,6 +93,10 @@ IDENTITY_ERROR_RESPONSES: dict[type[IdentityError], tuple[int, str]] = {
     MembershipRoleIncompatibleError: (
         status.HTTP_409_CONFLICT,
         "Membership role is incompatible with the organization type",
+    ),
+    MembershipLastAdministratorError: (
+        status.HTTP_409_CONFLICT,
+        "Organization must have at least one active administrator",
     ),
 }
 

@@ -46,6 +46,23 @@ class IdentityRepository:
             )
         )
 
+    def has_other_active_administrator(
+        self,
+        organization_id: uuid.UUID,
+        membership_id: uuid.UUID,
+    ) -> bool:
+        statement = (
+            select(OrganizationMembership.id)
+            .where(
+                OrganizationMembership.organization_id == organization_id,
+                OrganizationMembership.id != membership_id,
+                OrganizationMembership.role == "organization_admin",
+                OrganizationMembership.is_active.is_(True),
+            )
+            .limit(1)
+        )
+        return self.session.scalar(statement) is not None
+
     def list_memberships(
         self,
         organization_id: uuid.UUID,

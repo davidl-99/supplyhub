@@ -1,12 +1,17 @@
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, verify_password
+from app.db.session import session_factory
+from app.main import app
 from app.models.identity import OrganizationMembership, User
+from app.models.organization import Organization
 
 PASSWORD = "correct-horse-battery-staple"
 
@@ -398,3 +403,178 @@ def test_reject_cross_organization_membership_mutation(
     assert response.status_code == 403
     assert response.json() == {"detail": "Not enough permissions"}
     assert target_membership.is_active is True
+
+
+@pytest.mark.parametrize("operation", ["demote", "deactivate"])
+def test_reject_removing_last_active_administrator(
+    client: TestClient,
+    db_session: Session,
+    operation: str,
+) -> None:
+    organization = create_organization(client, "supplier")
+    administrator = create_user(client)
+    membership = seed_membership(
+        db_session,
+        organization["id"],
+        administrator["id"],
+        "organization_admin",
+    )
+    endpoint = f"/api/v1/organizations/{organization['id']}/memberships/{membership.id}"
+    headers = authorization_headers(administrator["id"])
+
+    if operation == "demote":
+        response = client.patch(endpoint, json={"role": "viewer"}, headers=headers)
+    else:
+        response = client.post(f"{endpoint}/deactivate", headers=headers)
+    db_session.refresh(membership)
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "Organization must have at least one active administrator"
+    }
+    assert membership.role == "organization_admin"
+    assert membership.is_active is True
+
+
+@pytest.mark.parametrize("operation", ["demote", "deactivate"])
+def test_allow_administrator_to_remove_own_access_when_another_admin_exists(
+    client: TestClient,
+    db_session: Session,
+    operation: str,
+) -> None:
+    organization = create_organization(client, "supplier")
+    acting_administrator = create_user(client)
+    other_administrator = create_user(client)
+    acting_membership = seed_membership(
+        db_session,
+        organization["id"],
+        acting_administrator["id"],
+        "organization_admin",
+    )
+    seed_membership(
+        db_session,
+        organization["id"],
+        other_administrator["id"],
+        "organization_admin",
+    )
+    endpoint = (
+        f"/api/v1/organizations/{organization['id']}/memberships/{acting_membership.id}"
+    )
+    headers = authorization_headers(acting_administrator["id"])
+
+    if operation == "demote":
+        response = client.patch(endpoint, json={"role": "viewer"}, headers=headers)
+    else:
+        response = client.post(f"{endpoint}/deactivate", headers=headers)
+
+    assert response.status_code == 200
+    if operation == "demote":
+        assert response.json()["role"] == "viewer"
+        assert response.json()["is_active"] is True
+    else:
+        assert response.json()["role"] == "organization_admin"
+        assert response.json()["is_active"] is False
+
+
+def test_concurrent_administrator_deactivations_leave_one_active(
+    migrated_database: None,
+) -> None:
+    organization_id = uuid.uuid4()
+    administrator_ids = (uuid.uuid4(), uuid.uuid4())
+    membership_ids = (uuid.uuid4(), uuid.uuid4())
+
+    with session_factory() as setup_session:
+        setup_session.add(
+            Organization(
+                id=organization_id,
+                name="Concurrent Authorization Organization",
+                slug=f"concurrent-authorization-{uuid.uuid4().hex}",
+                organization_type="supplier",
+            )
+        )
+        setup_session.add_all(
+            [
+                User(
+                    id=user_id,
+                    email=f"concurrent-{user_id}@example.com",
+                    full_name="Concurrent Administrator",
+                    password_hash="test-only-password-hash",
+                )
+                for user_id in administrator_ids
+            ]
+        )
+        setup_session.flush()
+        setup_session.add_all(
+            [
+                OrganizationMembership(
+                    id=membership_id,
+                    organization_id=organization_id,
+                    user_id=user_id,
+                    role="organization_admin",
+                )
+                for membership_id, user_id in zip(
+                    membership_ids,
+                    administrator_ids,
+                    strict=True,
+                )
+            ]
+        )
+        setup_session.commit()
+
+    start_barrier = Barrier(2)
+
+    def deactivate_administrator(
+        user_id: uuid.UUID,
+        membership_id: uuid.UUID,
+    ) -> int:
+        token = create_access_token(user_id)
+        start_barrier.wait(timeout=10)
+        with TestClient(app) as concurrent_client:
+            response = concurrent_client.post(
+                f"/api/v1/organizations/{organization_id}"
+                f"/memberships/{membership_id}/deactivate",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        return response.status_code
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(
+                    deactivate_administrator,
+                    user_id,
+                    membership_id,
+                )
+                for user_id, membership_id in zip(
+                    administrator_ids,
+                    membership_ids,
+                    strict=True,
+                )
+            ]
+            status_codes = sorted(future.result() for future in futures)
+
+        with session_factory() as verification_session:
+            active_administrators = verification_session.scalar(
+                select(func.count())
+                .select_from(OrganizationMembership)
+                .where(
+                    OrganizationMembership.organization_id == organization_id,
+                    OrganizationMembership.role == "organization_admin",
+                    OrganizationMembership.is_active.is_(True),
+                )
+            )
+
+        assert status_codes == [200, 409]
+        assert active_administrators == 1
+    finally:
+        with session_factory() as cleanup_session:
+            cleanup_session.execute(
+                delete(OrganizationMembership).where(
+                    OrganizationMembership.organization_id == organization_id
+                )
+            )
+            cleanup_session.execute(delete(User).where(User.id.in_(administrator_ids)))
+            cleanup_session.execute(
+                delete(Organization).where(Organization.id == organization_id)
+            )
+            cleanup_session.commit()
