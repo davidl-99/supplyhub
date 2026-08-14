@@ -5,6 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
+from app.models.identity import OrganizationMembership
+from app.modules.authorization.dependencies import require_permission
+from app.modules.authorization.permissions import Permission
 from app.modules.identity.exceptions import (
     IdentityError,
     MembershipAlreadyExistsError,
@@ -34,6 +37,22 @@ memberships_router = APIRouter(
 )
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 MembershipFilters = Annotated[MembershipListQuery, Query()]
+MembershipReader = Annotated[
+    OrganizationMembership,
+    Depends(require_permission(Permission.MEMBERSHIP_READ)),
+]
+MembershipCreator = Annotated[
+    OrganizationMembership,
+    Depends(require_permission(Permission.MEMBERSHIP_CREATE)),
+]
+MembershipUpdater = Annotated[
+    OrganizationMembership,
+    Depends(require_permission(Permission.MEMBERSHIP_UPDATE)),
+]
+MembershipDeactivator = Annotated[
+    OrganizationMembership,
+    Depends(require_permission(Permission.MEMBERSHIP_DEACTIVATE)),
+]
 
 IDENTITY_ERROR_RESPONSES: dict[type[IdentityError], tuple[int, str]] = {
     UserNotFoundError: (status.HTTP_404_NOT_FOUND, "User not found"),
@@ -94,6 +113,7 @@ def create_membership(
     organization_id: uuid.UUID,
     data: MembershipCreate,
     session: DatabaseSession,
+    _authorized_membership: MembershipCreator,
 ) -> MembershipRead:
     try:
         membership = IdentityService(session).create_membership(organization_id, data)
@@ -107,6 +127,7 @@ def list_memberships(
     organization_id: uuid.UUID,
     session: DatabaseSession,
     filters: MembershipFilters,
+    _authorized_membership: MembershipReader,
 ) -> MembershipListRead:
     try:
         memberships, total = IdentityService(session).list_memberships(
@@ -128,6 +149,7 @@ def update_membership(
     membership_id: uuid.UUID,
     data: MembershipUpdate,
     session: DatabaseSession,
+    _authorized_membership: MembershipUpdater,
 ) -> MembershipRead:
     try:
         membership = IdentityService(session).update_membership(
@@ -146,6 +168,7 @@ def deactivate_membership(
     organization_id: uuid.UUID,
     membership_id: uuid.UUID,
     session: DatabaseSession,
+    _authorized_membership: MembershipDeactivator,
 ) -> MembershipRead:
     try:
         membership = IdentityService(session).deactivate_membership(

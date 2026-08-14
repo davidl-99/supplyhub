@@ -4,7 +4,7 @@ SupplyHub is a B2B platform where supplier organizations can manage their produc
 
 ## Project status
 
-The backend currently supports JWT authentication, users, organization-scoped memberships, typed supplier and buyer organizations, product, warehouse, inventory, and order management, including Argon2 password hashing, search, filtering, pagination, soft deactivation, stock levels, auditable stock adjustments, filtered stock movement history, concurrency-safe inventory reservations, immutable order price snapshots, atomic order placement, cancellation, full fulfillment, and append-only order status history. Automated tests run against a dedicated PostgreSQL test database.
+The backend currently supports JWT authentication, a centralized role-to-permission policy, authorized organization-membership management, typed supplier and buyer organizations, product, warehouse, inventory, and order management, including Argon2 password hashing, search, filtering, pagination, soft deactivation, stock levels, auditable stock adjustments, filtered stock movement history, concurrency-safe inventory reservations, immutable order price snapshots, atomic order placement, cancellation, full fulfillment, and append-only order status history. Membership management now requires an active organization membership and the corresponding permission; authorization enforcement for the remaining business modules is still in progress. Automated tests run against a dedicated PostgreSQL test database.
 
 ## Local development
 
