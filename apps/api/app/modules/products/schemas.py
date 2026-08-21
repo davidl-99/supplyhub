@@ -124,7 +124,7 @@ class ProductRead(BaseModel):
 
 
 class ProductListQuery(BaseModel):
-    organization_id: uuid.UUID | None = None
+    organization_id: uuid.UUID
 
     search: str | None = Field(
         default=None,

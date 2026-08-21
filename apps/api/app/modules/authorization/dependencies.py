@@ -9,7 +9,7 @@ from app.db.session import get_db_session
 from app.models.identity import OrganizationMembership
 from app.modules.auth.dependencies import CurrentUser
 from app.modules.authorization.permissions import Permission, role_has_permission
-from app.modules.identity.repository import IdentityRepository
+from app.modules.authorization.service import AuthorizationService
 from app.modules.organizations.repository import OrganizationRepository
 
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
@@ -20,11 +20,11 @@ def get_active_membership(
     current_user: CurrentUser,
     session: DatabaseSession,
 ) -> OrganizationMembership:
-    membership = IdentityRepository(session).get_membership_by_user(
+    membership = AuthorizationService(session).get_active_membership(
         organization_id,
         current_user.id,
     )
-    if membership is None or not membership.is_active:
+    if membership is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",

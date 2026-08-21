@@ -3,6 +3,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from app.core.security import create_access_token
+from app.models.identity import OrganizationMembership, User
 
 
 def create_organization(client: TestClient) -> dict[str, object]:
@@ -17,12 +21,37 @@ def create_organization(client: TestClient) -> dict[str, object]:
     return response.json()
 
 
+def create_catalog_manager_headers(
+    db_session: Session,
+    organization_id: object,
+) -> dict[str, str]:
+    user = User(
+        email=f"inventory-product-user-{uuid.uuid4().hex}@example.com",
+        full_name="Inventory Product Test User",
+        password_hash="not-used-by-inventory-tests",
+    )
+    db_session.add(user)
+    db_session.flush()
+    membership = OrganizationMembership(
+        organization_id=uuid.UUID(str(organization_id)),
+        user_id=user.id,
+        role="catalog_manager",
+    )
+    db_session.add(membership)
+    db_session.commit()
+    return {
+        "Authorization": f"Bearer {create_access_token(user.id)}",
+    }
+
+
 def create_product(
     client: TestClient,
+    db_session: Session,
     organization_id: object,
     *,
     sku: str = "ITEM-001",
 ) -> dict[str, object]:
+    headers = create_catalog_manager_headers(db_session, organization_id)
     response = client.post(
         "/api/v1/products/",
         json={
@@ -32,6 +61,7 @@ def create_product(
             "price": "10.00",
             "currency": "USD",
         },
+        headers=headers,
     )
     assert response.status_code == 201
     return response.json()
@@ -57,9 +87,10 @@ def create_warehouse(
 
 def create_inventory_resources(
     client: TestClient,
+    db_session: Session,
 ) -> tuple[dict[str, object], dict[str, object]]:
     organization = create_organization(client)
-    product = create_product(client, organization["id"])
+    product = create_product(client, db_session, organization["id"])
     warehouse = create_warehouse(client, organization["id"])
     return product, warehouse
 
@@ -104,8 +135,11 @@ def create_reservation(
     return response.json()
 
 
-def test_adjust_inventory_creates_level_and_movement(client: TestClient) -> None:
-    product, warehouse = create_inventory_resources(client)
+def test_adjust_inventory_creates_level_and_movement(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    product, warehouse = create_inventory_resources(client, db_session)
 
     body = adjust_inventory(client, product["id"], warehouse["id"], 25)
 
@@ -115,8 +149,11 @@ def test_adjust_inventory_creates_level_and_movement(client: TestClient) -> None
     assert body["movement"]["inventory_level_id"] == body["level"]["id"]
 
 
-def test_adjust_inventory_updates_existing_level(client: TestClient) -> None:
-    product, warehouse = create_inventory_resources(client)
+def test_adjust_inventory_updates_existing_level(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    product, warehouse = create_inventory_resources(client, db_session)
     adjust_inventory(client, product["id"], warehouse["id"], 25)
 
     body = adjust_inventory(client, product["id"], warehouse["id"], -10)
@@ -127,8 +164,9 @@ def test_adjust_inventory_updates_existing_level(client: TestClient) -> None:
 
 def test_reject_adjustment_that_would_make_inventory_negative(
     client: TestClient,
+    db_session: Session,
 ) -> None:
-    product, warehouse = create_inventory_resources(client)
+    product, warehouse = create_inventory_resources(client, db_session)
 
     response = client.post(
         "/api/v1/inventory/adjustments",
@@ -145,10 +183,11 @@ def test_reject_adjustment_that_would_make_inventory_negative(
 
 def test_reject_product_and_warehouse_from_different_organizations(
     client: TestClient,
+    db_session: Session,
 ) -> None:
     first_organization = create_organization(client)
     second_organization = create_organization(client)
-    product = create_product(client, first_organization["id"])
+    product = create_product(client, db_session, first_organization["id"])
     warehouse = create_warehouse(client, second_organization["id"])
 
     response = client.post(
@@ -169,11 +208,21 @@ def test_reject_product_and_warehouse_from_different_organizations(
 @pytest.mark.parametrize("inactive_resource", ["product", "warehouse"])
 def test_reject_inactive_inventory_resource(
     client: TestClient,
+    db_session: Session,
     inactive_resource: str,
 ) -> None:
-    product, warehouse = create_inventory_resources(client)
+    product, warehouse = create_inventory_resources(client, db_session)
     resource = product if inactive_resource == "product" else warehouse
-    client.post(f"/api/v1/{inactive_resource}s/{resource['id']}/deactivate")
+    headers = None
+    if inactive_resource == "product":
+        headers = create_catalog_manager_headers(
+            db_session,
+            product["organization_id"],
+        )
+    client.post(
+        f"/api/v1/{inactive_resource}s/{resource['id']}/deactivate",
+        headers=headers,
+    )
 
     response = client.post(
         "/api/v1/inventory/adjustments",
@@ -188,8 +237,11 @@ def test_reject_inactive_inventory_resource(
     assert response.json() == {"detail": f"{inactive_resource.title()} is inactive"}
 
 
-def test_reject_zero_quantity_delta(client: TestClient) -> None:
-    product, warehouse = create_inventory_resources(client)
+def test_reject_zero_quantity_delta(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    product, warehouse = create_inventory_resources(client, db_session)
 
     response = client.post(
         "/api/v1/inventory/adjustments",
@@ -203,11 +255,18 @@ def test_reject_zero_quantity_delta(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_get_and_list_inventory_levels(client: TestClient) -> None:
+def test_get_and_list_inventory_levels(
+    client: TestClient,
+    db_session: Session,
+) -> None:
     organization = create_organization(client)
     warehouse = create_warehouse(client, organization["id"])
-    first_product = create_product(client, organization["id"], sku="ITEM-001")
-    second_product = create_product(client, organization["id"], sku="ITEM-002")
+    first_product = create_product(
+        client, db_session, organization["id"], sku="ITEM-001"
+    )
+    second_product = create_product(
+        client, db_session, organization["id"], sku="ITEM-002"
+    )
     adjust_inventory(client, first_product["id"], warehouse["id"], 10)
     adjust_inventory(client, second_product["id"], warehouse["id"], 20)
 
@@ -226,8 +285,11 @@ def test_get_and_list_inventory_levels(client: TestClient) -> None:
     assert get_response.json()["quantity"] == 10
 
 
-def test_list_stock_movements_by_inventory_level(client: TestClient) -> None:
-    product, warehouse = create_inventory_resources(client)
+def test_list_stock_movements_by_inventory_level(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    product, warehouse = create_inventory_resources(client, db_session)
     first_adjustment = adjust_inventory(client, product["id"], warehouse["id"], 25)
     adjust_inventory(client, product["id"], warehouse["id"], -5)
 
@@ -246,12 +308,17 @@ def test_list_stock_movements_by_inventory_level(client: TestClient) -> None:
 
 def test_filter_stock_movements_by_warehouse_product_and_date(
     client: TestClient,
+    db_session: Session,
 ) -> None:
     organization = create_organization(client)
     first_warehouse = create_warehouse(client, organization["id"], code="FIRST")
     second_warehouse = create_warehouse(client, organization["id"], code="SECOND")
-    first_product = create_product(client, organization["id"], sku="ITEM-001")
-    second_product = create_product(client, organization["id"], sku="ITEM-002")
+    first_product = create_product(
+        client, db_session, organization["id"], sku="ITEM-001"
+    )
+    second_product = create_product(
+        client, db_session, organization["id"], sku="ITEM-002"
+    )
     adjust_inventory(client, first_product["id"], first_warehouse["id"], 10)
     adjust_inventory(client, second_product["id"], first_warehouse["id"], 20)
     adjust_inventory(client, first_product["id"], second_warehouse["id"], 30)
@@ -271,8 +338,11 @@ def test_filter_stock_movements_by_warehouse_product_and_date(
     assert response.json()["items"][0]["resulting_quantity"] == 10
 
 
-def test_paginate_stock_movements(client: TestClient) -> None:
-    product, warehouse = create_inventory_resources(client)
+def test_paginate_stock_movements(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    product, warehouse = create_inventory_resources(client, db_session)
     adjust_inventory(client, product["id"], warehouse["id"], 10)
     adjust_inventory(client, product["id"], warehouse["id"], 5)
     adjust_inventory(client, product["id"], warehouse["id"], -2)
@@ -308,8 +378,9 @@ def test_reject_invalid_stock_movement_date_range(client: TestClient) -> None:
 
 def test_create_inventory_reservation_reduces_available_quantity(
     client: TestClient,
+    db_session: Session,
 ) -> None:
-    product, warehouse = create_inventory_resources(client)
+    product, warehouse = create_inventory_resources(client, db_session)
     adjust_inventory(client, product["id"], warehouse["id"], 20)
 
     body = create_reservation(
@@ -327,8 +398,11 @@ def test_create_inventory_reservation_reduces_available_quantity(
     assert body["level"]["available_quantity"] == 12
 
 
-def test_reject_reservation_above_available_quantity(client: TestClient) -> None:
-    product, warehouse = create_inventory_resources(client)
+def test_reject_reservation_above_available_quantity(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    product, warehouse = create_inventory_resources(client, db_session)
     adjust_inventory(client, product["id"], warehouse["id"], 10)
     create_reservation(client, product["id"], warehouse["id"], 6)
 
@@ -347,8 +421,9 @@ def test_reject_reservation_above_available_quantity(client: TestClient) -> None
 
 def test_release_inventory_reservation_restores_availability(
     client: TestClient,
+    db_session: Session,
 ) -> None:
-    product, warehouse = create_inventory_resources(client)
+    product, warehouse = create_inventory_resources(client, db_session)
     adjust_inventory(client, product["id"], warehouse["id"], 10)
     reservation = create_reservation(client, product["id"], warehouse["id"], 4)
 
@@ -368,8 +443,9 @@ def test_release_inventory_reservation_restores_availability(
 
 def test_consume_inventory_reservation_updates_stock_and_creates_movement(
     client: TestClient,
+    db_session: Session,
 ) -> None:
-    product, warehouse = create_inventory_resources(client)
+    product, warehouse = create_inventory_resources(client, db_session)
     adjust_inventory(client, product["id"], warehouse["id"], 10)
     reservation = create_reservation(client, product["id"], warehouse["id"], 4)
 
@@ -388,8 +464,9 @@ def test_consume_inventory_reservation_updates_stock_and_creates_movement(
 
 def test_reject_adjustment_that_would_reduce_reserved_stock(
     client: TestClient,
+    db_session: Session,
 ) -> None:
-    product, warehouse = create_inventory_resources(client)
+    product, warehouse = create_inventory_resources(client, db_session)
     adjust_inventory(client, product["id"], warehouse["id"], 10)
     create_reservation(client, product["id"], warehouse["id"], 8)
 
@@ -406,11 +483,18 @@ def test_reject_adjustment_that_would_reduce_reserved_stock(
     assert response.json() == {"detail": "Insufficient available inventory"}
 
 
-def test_get_and_filter_inventory_reservations(client: TestClient) -> None:
+def test_get_and_filter_inventory_reservations(
+    client: TestClient,
+    db_session: Session,
+) -> None:
     organization = create_organization(client)
     warehouse = create_warehouse(client, organization["id"])
-    first_product = create_product(client, organization["id"], sku="ITEM-001")
-    second_product = create_product(client, organization["id"], sku="ITEM-002")
+    first_product = create_product(
+        client, db_session, organization["id"], sku="ITEM-001"
+    )
+    second_product = create_product(
+        client, db_session, organization["id"], sku="ITEM-002"
+    )
     adjust_inventory(client, first_product["id"], warehouse["id"], 10)
     adjust_inventory(client, second_product["id"], warehouse["id"], 10)
     first_reservation = create_reservation(
@@ -437,8 +521,11 @@ def test_get_and_filter_inventory_reservations(client: TestClient) -> None:
     assert get_response.json()["id"] == first_reservation["reservation"]["id"]
 
 
-def test_reject_non_positive_reservation_quantity(client: TestClient) -> None:
-    product, warehouse = create_inventory_resources(client)
+def test_reject_non_positive_reservation_quantity(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    product, warehouse = create_inventory_resources(client, db_session)
 
     response = client.post(
         "/api/v1/inventory/reservations",

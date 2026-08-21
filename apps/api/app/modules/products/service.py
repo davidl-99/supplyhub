@@ -90,10 +90,9 @@ class ProductService:
 
     def update(
         self,
-        product_id: uuid.UUID,
+        product: Product,
         data: ProductUpdate,
     ) -> Product:
-        product = self.get_by_id(product_id)
         changes = data.model_dump(exclude_unset=True)
 
         new_sku = changes.get("sku")
@@ -115,12 +114,7 @@ class ProductService:
 
         return product
 
-    def deactivate(
-        self,
-        product_id: uuid.UUID,
-    ) -> Product:
-        product = self.get_by_id(product_id)
-
+    def deactivate(self, product: Product) -> Product:
         if not product.is_active:
             return product
 

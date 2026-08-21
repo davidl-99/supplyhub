@@ -1,26 +1,28 @@
-import uuid
 from typing import Annotated
 
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
-    Query,
     status,
 )
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
+from app.modules.products.dependencies import (
+    AuthorizedProductCreate,
+    AuthorizedProductDeactivate,
+    AuthorizedProductList,
+    AuthorizedProductRead,
+    AuthorizedProductUpdate,
+)
 from app.modules.products.exceptions import (
-    ProductNotFoundError,
     ProductOrganizationCannotSupplyError,
     ProductOrganizationInactiveError,
     ProductOrganizationNotFoundError,
     ProductSkuAlreadyExistsError,
 )
 from app.modules.products.schemas import (
-    ProductCreate,
-    ProductListQuery,
     ProductListRead,
     ProductRead,
     ProductUpdate,
@@ -37,11 +39,6 @@ DatabaseSession = Annotated[
     Depends(get_db_session),
 ]
 
-ProductFilters = Annotated[
-    ProductListQuery,
-    Query(),
-]
-
 
 @router.post(
     "/",
@@ -49,7 +46,7 @@ ProductFilters = Annotated[
     status_code=status.HTTP_201_CREATED,
 )
 def create_product(
-    data: ProductCreate,
+    data: AuthorizedProductCreate,
     session: DatabaseSession,
 ) -> ProductRead:
     service = ProductService(session)
@@ -86,7 +83,7 @@ def create_product(
 )
 def list_products(
     session: DatabaseSession,
-    filters: ProductFilters,
+    filters: AuthorizedProductList,
 ) -> ProductListRead:
     service = ProductService(session)
 
@@ -105,19 +102,8 @@ def list_products(
     response_model=ProductRead,
 )
 def get_product(
-    product_id: uuid.UUID,
-    session: DatabaseSession,
+    product: AuthorizedProductRead,
 ) -> ProductRead:
-    service = ProductService(session)
-
-    try:
-        product = service.get_by_id(product_id)
-    except ProductNotFoundError as error:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found",
-        ) from error
-
     return ProductRead.model_validate(product)
 
 
@@ -126,7 +112,7 @@ def get_product(
     response_model=ProductRead,
 )
 def update_product(
-    product_id: uuid.UUID,
+    product: AuthorizedProductUpdate,
     data: ProductUpdate,
     session: DatabaseSession,
 ) -> ProductRead:
@@ -134,14 +120,9 @@ def update_product(
 
     try:
         product = service.update(
-            product_id=product_id,
+            product=product,
             data=data,
         )
-    except ProductNotFoundError as error:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found",
-        ) from error
     except ProductSkuAlreadyExistsError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -156,17 +137,10 @@ def update_product(
     response_model=ProductRead,
 )
 def deactivate_product(
-    product_id: uuid.UUID,
+    product: AuthorizedProductDeactivate,
     session: DatabaseSession,
 ) -> ProductRead:
     service = ProductService(session)
-
-    try:
-        product = service.deactivate(product_id)
-    except ProductNotFoundError as error:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found",
-        ) from error
+    product = service.deactivate(product)
 
     return ProductRead.model_validate(product)
