@@ -1,20 +1,23 @@
-import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
+from app.modules.warehouses.dependencies import (
+    AuthorizedWarehouseCreate,
+    AuthorizedWarehouseDeactivate,
+    AuthorizedWarehouseList,
+    AuthorizedWarehouseRead,
+    AuthorizedWarehouseUpdate,
+)
 from app.modules.warehouses.exceptions import (
     WarehouseCodeAlreadyExistsError,
-    WarehouseNotFoundError,
     WarehouseOrganizationCannotSupplyError,
     WarehouseOrganizationInactiveError,
     WarehouseOrganizationNotFoundError,
 )
 from app.modules.warehouses.schemas import (
-    WarehouseCreate,
-    WarehouseListQuery,
     WarehouseListRead,
     WarehouseRead,
     WarehouseUpdate,
@@ -24,12 +27,11 @@ from app.modules.warehouses.service import WarehouseService
 router = APIRouter(prefix="/warehouses", tags=["Warehouses"])
 
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
-WarehouseFilters = Annotated[WarehouseListQuery, Query()]
 
 
 @router.post("/", response_model=WarehouseRead, status_code=status.HTTP_201_CREATED)
 def create_warehouse(
-    data: WarehouseCreate,
+    data: AuthorizedWarehouseCreate,
     session: DatabaseSession,
 ) -> WarehouseRead:
     service = WarehouseService(session)
@@ -63,7 +65,7 @@ def create_warehouse(
 @router.get("/", response_model=WarehouseListRead)
 def list_warehouses(
     session: DatabaseSession,
-    filters: WarehouseFilters,
+    filters: AuthorizedWarehouseList,
 ) -> WarehouseListRead:
     warehouses, total = WarehouseService(session).list_all(filters)
     return WarehouseListRead(
@@ -76,33 +78,19 @@ def list_warehouses(
 
 @router.get("/{warehouse_id}", response_model=WarehouseRead)
 def get_warehouse(
-    warehouse_id: uuid.UUID,
-    session: DatabaseSession,
+    warehouse: AuthorizedWarehouseRead,
 ) -> WarehouseRead:
-    try:
-        warehouse = WarehouseService(session).get_by_id(warehouse_id)
-    except WarehouseNotFoundError as error:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Warehouse not found",
-        ) from error
-
     return WarehouseRead.model_validate(warehouse)
 
 
 @router.patch("/{warehouse_id}", response_model=WarehouseRead)
 def update_warehouse(
-    warehouse_id: uuid.UUID,
+    warehouse: AuthorizedWarehouseUpdate,
     data: WarehouseUpdate,
     session: DatabaseSession,
 ) -> WarehouseRead:
     try:
-        warehouse = WarehouseService(session).update(warehouse_id, data)
-    except WarehouseNotFoundError as error:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Warehouse not found",
-        ) from error
+        warehouse = WarehouseService(session).update(warehouse=warehouse, data=data)
     except WarehouseCodeAlreadyExistsError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -114,15 +102,9 @@ def update_warehouse(
 
 @router.post("/{warehouse_id}/deactivate", response_model=WarehouseRead)
 def deactivate_warehouse(
-    warehouse_id: uuid.UUID,
+    warehouse: AuthorizedWarehouseDeactivate,
     session: DatabaseSession,
 ) -> WarehouseRead:
-    try:
-        warehouse = WarehouseService(session).deactivate(warehouse_id)
-    except WarehouseNotFoundError as error:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Warehouse not found",
-        ) from error
+    warehouse = WarehouseService(session).deactivate(warehouse)
 
     return WarehouseRead.model_validate(warehouse)

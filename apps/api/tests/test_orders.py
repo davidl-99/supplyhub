@@ -24,7 +24,7 @@ def create_organization(
     return response.json()
 
 
-def create_catalog_manager_headers(
+def create_organization_admin_headers(
     db_session: Session,
     organization_id: object,
 ) -> dict[str, str]:
@@ -38,7 +38,7 @@ def create_catalog_manager_headers(
     membership = OrganizationMembership(
         organization_id=uuid.UUID(str(organization_id)),
         user_id=user.id,
-        role="catalog_manager",
+        role="organization_admin",
     )
     db_session.add(membership)
     db_session.commit()
@@ -55,7 +55,7 @@ def create_product(
     sku: str,
     price: str = "25.00",
 ) -> dict[str, object]:
-    headers = create_catalog_manager_headers(db_session, organization_id)
+    headers = create_organization_admin_headers(db_session, organization_id)
     response = client.post(
         "/api/v1/products/",
         json={
@@ -74,6 +74,7 @@ def create_product(
 def create_warehouse(
     client: TestClient,
     organization_id: object,
+    headers: dict[str, str],
     *,
     code: str = "ORDER-WH",
 ) -> dict[str, object]:
@@ -84,6 +85,7 @@ def create_warehouse(
             "code": code,
             "name": f"Order Warehouse {code}",
         },
+        headers=headers,
     )
     assert response.status_code == 201
     return response.json()
@@ -113,7 +115,8 @@ def create_order_resources(
     buyer = create_organization(client, "buyer")
     supplier = create_organization(client, "supplier")
     product = create_product(client, db_session, supplier["id"], sku="ORDER-001")
-    warehouse = create_warehouse(client, supplier["id"])
+    warehouse_headers = create_organization_admin_headers(db_session, supplier["id"])
+    warehouse = create_warehouse(client, supplier["id"], warehouse_headers)
     return buyer, supplier, product, warehouse
 
 
@@ -171,7 +174,7 @@ def test_order_price_snapshot_survives_product_update(
     update_response = client.patch(
         f"/api/v1/products/{product['id']}",
         json={"price": "99.00"},
-        headers=create_catalog_manager_headers(
+        headers=create_organization_admin_headers(
             db_session,
             product["organization_id"],
         ),
@@ -188,7 +191,10 @@ def test_reject_invalid_order_organization_capabilities(
 ) -> None:
     supplier = create_organization(client, "supplier")
     product = create_product(client, db_session, supplier["id"], sku="ROLE-001")
-    warehouse = create_warehouse(client, supplier["id"], code="ROLE-WH")
+    warehouse_headers = create_organization_admin_headers(db_session, supplier["id"])
+    warehouse = create_warehouse(
+        client, supplier["id"], warehouse_headers, code="ROLE-WH"
+    )
 
     response = client.post(
         "/api/v1/orders/",
@@ -242,7 +248,10 @@ def test_place_order_rolls_back_all_lines_when_inventory_is_insufficient(
 ) -> None:
     buyer = create_organization(client, "buyer")
     supplier = create_organization(client, "supplier")
-    warehouse = create_warehouse(client, supplier["id"], code="ATOMIC-WH")
+    warehouse_headers = create_organization_admin_headers(db_session, supplier["id"])
+    warehouse = create_warehouse(
+        client, supplier["id"], warehouse_headers, code="ATOMIC-WH"
+    )
     first_product = create_product(client, db_session, supplier["id"], sku="ATOMIC-001")
     second_product = create_product(
         client, db_session, supplier["id"], sku="ATOMIC-002"

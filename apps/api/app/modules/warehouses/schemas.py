@@ -59,7 +59,7 @@ class WarehouseRead(BaseModel):
 
 
 class WarehouseListQuery(BaseModel):
-    organization_id: uuid.UUID | None = None
+    organization_id: uuid.UUID
     search: str | None = Field(default=None, min_length=1, max_length=150)
     is_active: bool | None = None
     limit: int = Field(default=20, ge=1, le=100)

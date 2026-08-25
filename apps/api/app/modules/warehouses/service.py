@@ -79,10 +79,9 @@ class WarehouseService:
 
     def update(
         self,
-        warehouse_id: uuid.UUID,
+        warehouse: Warehouse,
         data: WarehouseUpdate,
     ) -> Warehouse:
-        warehouse = self.get_by_id(warehouse_id)
         changes = data.model_dump(exclude_unset=True)
         new_code = changes.get("code")
 
@@ -101,9 +100,7 @@ class WarehouseService:
         self.session.refresh(warehouse)
         return warehouse
 
-    def deactivate(self, warehouse_id: uuid.UUID) -> Warehouse:
-        warehouse = self.get_by_id(warehouse_id)
-
+    def deactivate(self, warehouse: Warehouse) -> Warehouse:
         if not warehouse.is_active:
             return warehouse
 

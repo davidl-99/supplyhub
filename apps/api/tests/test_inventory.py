@@ -21,7 +21,7 @@ def create_organization(client: TestClient) -> dict[str, object]:
     return response.json()
 
 
-def create_catalog_manager_headers(
+def create_organization_admin_headers(
     db_session: Session,
     organization_id: object,
 ) -> dict[str, str]:
@@ -35,7 +35,7 @@ def create_catalog_manager_headers(
     membership = OrganizationMembership(
         organization_id=uuid.UUID(str(organization_id)),
         user_id=user.id,
-        role="catalog_manager",
+        role="organization_admin",
     )
     db_session.add(membership)
     db_session.commit()
@@ -51,7 +51,7 @@ def create_product(
     *,
     sku: str = "ITEM-001",
 ) -> dict[str, object]:
-    headers = create_catalog_manager_headers(db_session, organization_id)
+    headers = create_organization_admin_headers(db_session, organization_id)
     response = client.post(
         "/api/v1/products/",
         json={
@@ -70,6 +70,7 @@ def create_product(
 def create_warehouse(
     client: TestClient,
     organization_id: object,
+    headers: dict[str, str],
     *,
     code: str = "MAIN",
 ) -> dict[str, object]:
@@ -80,6 +81,7 @@ def create_warehouse(
             "code": code,
             "name": "Main Warehouse",
         },
+        headers=headers,
     )
     assert response.status_code == 201
     return response.json()
@@ -91,7 +93,8 @@ def create_inventory_resources(
 ) -> tuple[dict[str, object], dict[str, object]]:
     organization = create_organization(client)
     product = create_product(client, db_session, organization["id"])
-    warehouse = create_warehouse(client, organization["id"])
+    headers = create_organization_admin_headers(db_session, organization["id"])
+    warehouse = create_warehouse(client, organization["id"], headers)
     return product, warehouse
 
 
@@ -188,7 +191,15 @@ def test_reject_product_and_warehouse_from_different_organizations(
     first_organization = create_organization(client)
     second_organization = create_organization(client)
     product = create_product(client, db_session, first_organization["id"])
-    warehouse = create_warehouse(client, second_organization["id"])
+    warehouse_headers = create_organization_admin_headers(
+        db_session,
+        second_organization["id"],
+    )
+    warehouse = create_warehouse(
+        client,
+        second_organization["id"],
+        warehouse_headers,
+    )
 
     response = client.post(
         "/api/v1/inventory/adjustments",
@@ -213,12 +224,10 @@ def test_reject_inactive_inventory_resource(
 ) -> None:
     product, warehouse = create_inventory_resources(client, db_session)
     resource = product if inactive_resource == "product" else warehouse
-    headers = None
-    if inactive_resource == "product":
-        headers = create_catalog_manager_headers(
-            db_session,
-            product["organization_id"],
-        )
+    headers = create_organization_admin_headers(
+        db_session,
+        resource["organization_id"],
+    )
     client.post(
         f"/api/v1/{inactive_resource}s/{resource['id']}/deactivate",
         headers=headers,
@@ -260,7 +269,10 @@ def test_get_and_list_inventory_levels(
     db_session: Session,
 ) -> None:
     organization = create_organization(client)
-    warehouse = create_warehouse(client, organization["id"])
+    warehouse_headers = create_organization_admin_headers(
+        db_session, organization["id"]
+    )
+    warehouse = create_warehouse(client, organization["id"], warehouse_headers)
     first_product = create_product(
         client, db_session, organization["id"], sku="ITEM-001"
     )
@@ -311,8 +323,15 @@ def test_filter_stock_movements_by_warehouse_product_and_date(
     db_session: Session,
 ) -> None:
     organization = create_organization(client)
-    first_warehouse = create_warehouse(client, organization["id"], code="FIRST")
-    second_warehouse = create_warehouse(client, organization["id"], code="SECOND")
+    warehouse_headers = create_organization_admin_headers(
+        db_session, organization["id"]
+    )
+    first_warehouse = create_warehouse(
+        client, organization["id"], warehouse_headers, code="FIRST"
+    )
+    second_warehouse = create_warehouse(
+        client, organization["id"], warehouse_headers, code="SECOND"
+    )
     first_product = create_product(
         client, db_session, organization["id"], sku="ITEM-001"
     )
@@ -488,7 +507,10 @@ def test_get_and_filter_inventory_reservations(
     db_session: Session,
 ) -> None:
     organization = create_organization(client)
-    warehouse = create_warehouse(client, organization["id"])
+    warehouse_headers = create_organization_admin_headers(
+        db_session, organization["id"]
+    )
+    warehouse = create_warehouse(client, organization["id"], warehouse_headers)
     first_product = create_product(
         client, db_session, organization["id"], sku="ITEM-001"
     )
