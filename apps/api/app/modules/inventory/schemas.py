@@ -51,6 +51,7 @@ class InventoryAdjustmentRead(BaseModel):
 
 
 class InventoryLevelListQuery(BaseModel):
+    organization_id: uuid.UUID
     warehouse_id: uuid.UUID | None = None
     product_id: uuid.UUID | None = None
     limit: int = Field(default=20, ge=1, le=100)
@@ -67,6 +68,7 @@ class InventoryLevelListRead(BaseModel):
 
 
 class StockMovementListQuery(BaseModel):
+    organization_id: uuid.UUID
     inventory_level_id: uuid.UUID | None = None
     warehouse_id: uuid.UUID | None = None
     product_id: uuid.UUID | None = None

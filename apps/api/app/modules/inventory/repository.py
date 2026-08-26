@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models.inventory import InventoryLevel, InventoryReservation, StockMovement
+from app.models.warehouse import Warehouse
 
 
 class InventoryRepository:
@@ -74,6 +75,7 @@ class InventoryRepository:
 
     def list_levels(
         self,
+        organization_id: uuid.UUID | None = None,
         warehouse_id: uuid.UUID | None = None,
         product_id: uuid.UUID | None = None,
         limit: int = 20,
@@ -81,17 +83,23 @@ class InventoryRepository:
     ) -> tuple[list[InventoryLevel], int]:
         conditions = []
 
+        if organization_id is not None:
+            conditions.append(Warehouse.organization_id == organization_id)
         if warehouse_id is not None:
             conditions.append(InventoryLevel.warehouse_id == warehouse_id)
         if product_id is not None:
             conditions.append(InventoryLevel.product_id == product_id)
 
         count_statement = (
-            select(func.count()).select_from(InventoryLevel).where(*conditions)
+            select(func.count())
+            .select_from(InventoryLevel)
+            .join(Warehouse, Warehouse.id == InventoryLevel.warehouse_id)
+            .where(*conditions)
         )
         total = self.session.scalar(count_statement) or 0
         statement = (
             select(InventoryLevel)
+            .join(Warehouse, Warehouse.id == InventoryLevel.warehouse_id)
             .where(*conditions)
             .order_by(InventoryLevel.updated_at.desc(), InventoryLevel.id.desc())
             .offset(offset)
@@ -105,6 +113,7 @@ class InventoryRepository:
 
     def list_movements(
         self,
+        organization_id: uuid.UUID | None = None,
         inventory_level_id: uuid.UUID | None = None,
         warehouse_id: uuid.UUID | None = None,
         product_id: uuid.UUID | None = None,
@@ -115,6 +124,8 @@ class InventoryRepository:
     ) -> tuple[list[StockMovement], int]:
         conditions = []
 
+        if organization_id is not None:
+            conditions.append(Warehouse.organization_id == organization_id)
         if inventory_level_id is not None:
             conditions.append(StockMovement.inventory_level_id == inventory_level_id)
         if warehouse_id is not None:
@@ -126,13 +137,17 @@ class InventoryRepository:
         if created_to is not None:
             conditions.append(StockMovement.created_at <= created_to)
 
-        requires_level_join = warehouse_id is not None or product_id is not None
-        count_statement = select(func.count()).select_from(StockMovement)
-        statement = select(StockMovement)
-
-        if requires_level_join:
-            count_statement = count_statement.join(InventoryLevel)
-            statement = statement.join(InventoryLevel)
+        count_statement = (
+            select(func.count())
+            .select_from(StockMovement)
+            .join(InventoryLevel, InventoryLevel.id == StockMovement.inventory_level_id)
+            .join(Warehouse, Warehouse.id == InventoryLevel.warehouse_id)
+        )
+        statement = (
+            select(StockMovement)
+            .join(InventoryLevel, InventoryLevel.id == StockMovement.inventory_level_id)
+            .join(Warehouse, Warehouse.id == InventoryLevel.warehouse_id)
+        )
 
         total = self.session.scalar(count_statement.where(*conditions)) or 0
         statement = (

@@ -94,6 +94,7 @@ class InventoryService:
         filters: InventoryLevelListQuery,
     ) -> tuple[list[InventoryLevel], int]:
         return self.inventory_repository.list_levels(
+            organization_id=filters.organization_id,
             warehouse_id=filters.warehouse_id,
             product_id=filters.product_id,
             limit=filters.limit,
@@ -105,6 +106,7 @@ class InventoryService:
         filters: StockMovementListQuery,
     ) -> tuple[list[StockMovement], int]:
         return self.inventory_repository.list_movements(
+            organization_id=filters.organization_id,
             inventory_level_id=filters.inventory_level_id,
             warehouse_id=filters.warehouse_id,
             product_id=filters.product_id,

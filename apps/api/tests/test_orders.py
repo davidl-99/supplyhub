@@ -96,6 +96,7 @@ def adjust_inventory(
     product_id: object,
     warehouse_id: object,
     quantity: int,
+    headers: dict[str, str],
 ) -> None:
     response = client.post(
         "/api/v1/inventory/adjustments",
@@ -104,6 +105,7 @@ def adjust_inventory(
             "warehouse_id": warehouse_id,
             "quantity_delta": quantity,
         },
+        headers=headers,
     )
     assert response.status_code == 201
 
@@ -111,13 +113,19 @@ def adjust_inventory(
 def create_order_resources(
     client: TestClient,
     db_session: Session,
-) -> tuple[dict[str, object], dict[str, object], dict[str, object], dict[str, object]]:
+) -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, str],
+]:
     buyer = create_organization(client, "buyer")
     supplier = create_organization(client, "supplier")
     product = create_product(client, db_session, supplier["id"], sku="ORDER-001")
-    warehouse_headers = create_organization_admin_headers(db_session, supplier["id"])
-    warehouse = create_warehouse(client, supplier["id"], warehouse_headers)
-    return buyer, supplier, product, warehouse
+    supplier_headers = create_organization_admin_headers(db_session, supplier["id"])
+    warehouse = create_warehouse(client, supplier["id"], supplier_headers)
+    return buyer, supplier, product, warehouse, supplier_headers
 
 
 def create_order(
@@ -142,7 +150,9 @@ def test_create_draft_order_with_price_snapshot(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    buyer, supplier, product, warehouse = create_order_resources(client, db_session)
+    buyer, supplier, product, warehouse, supplier_headers = create_order_resources(
+        client, db_session
+    )
 
     body = create_order(
         client,
@@ -163,7 +173,9 @@ def test_order_price_snapshot_survives_product_update(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    buyer, supplier, product, warehouse = create_order_resources(client, db_session)
+    buyer, supplier, product, warehouse, supplier_headers = create_order_resources(
+        client, db_session
+    )
     order = create_order(
         client,
         buyer["id"],
@@ -219,8 +231,10 @@ def test_place_order_creates_inventory_reservation(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    buyer, supplier, product, warehouse = create_order_resources(client, db_session)
-    adjust_inventory(client, product["id"], warehouse["id"], 10)
+    buyer, supplier, product, warehouse, supplier_headers = create_order_resources(
+        client, db_session
+    )
+    adjust_inventory(client, product["id"], warehouse["id"], 10, supplier_headers)
     order = create_order(
         client,
         buyer["id"],
@@ -230,7 +244,8 @@ def test_place_order_creates_inventory_reservation(
 
     response = client.post(f"/api/v1/orders/{order['id']}/place")
     level_response = client.get(
-        f"/api/v1/inventory/levels/{warehouse['id']}/{product['id']}"
+        f"/api/v1/inventory/levels/{warehouse['id']}/{product['id']}",
+        headers=supplier_headers,
     )
 
     assert response.status_code == 200
@@ -248,16 +263,16 @@ def test_place_order_rolls_back_all_lines_when_inventory_is_insufficient(
 ) -> None:
     buyer = create_organization(client, "buyer")
     supplier = create_organization(client, "supplier")
-    warehouse_headers = create_organization_admin_headers(db_session, supplier["id"])
+    supplier_headers = create_organization_admin_headers(db_session, supplier["id"])
     warehouse = create_warehouse(
-        client, supplier["id"], warehouse_headers, code="ATOMIC-WH"
+        client, supplier["id"], supplier_headers, code="ATOMIC-WH"
     )
     first_product = create_product(client, db_session, supplier["id"], sku="ATOMIC-001")
     second_product = create_product(
         client, db_session, supplier["id"], sku="ATOMIC-002"
     )
-    adjust_inventory(client, first_product["id"], warehouse["id"], 10)
-    adjust_inventory(client, second_product["id"], warehouse["id"], 1)
+    adjust_inventory(client, first_product["id"], warehouse["id"], 10, supplier_headers)
+    adjust_inventory(client, second_product["id"], warehouse["id"], 1, supplier_headers)
     order = create_order(
         client,
         buyer["id"],
@@ -278,7 +293,8 @@ def test_place_order_rolls_back_all_lines_when_inventory_is_insufficient(
 
     response = client.post(f"/api/v1/orders/{order['id']}/place")
     first_level = client.get(
-        f"/api/v1/inventory/levels/{warehouse['id']}/{first_product['id']}"
+        f"/api/v1/inventory/levels/{warehouse['id']}/{first_product['id']}",
+        headers=supplier_headers,
     ).json()
     order_response = client.get(f"/api/v1/orders/{order['id']}")
 
@@ -294,8 +310,10 @@ def test_cancel_placed_order_releases_reservations(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    buyer, supplier, product, warehouse = create_order_resources(client, db_session)
-    adjust_inventory(client, product["id"], warehouse["id"], 10)
+    buyer, supplier, product, warehouse, supplier_headers = create_order_resources(
+        client, db_session
+    )
+    adjust_inventory(client, product["id"], warehouse["id"], 10, supplier_headers)
     order = create_order(
         client,
         buyer["id"],
@@ -307,7 +325,8 @@ def test_cancel_placed_order_releases_reservations(
     response = client.post(f"/api/v1/orders/{order['id']}/cancel")
     repeated_response = client.post(f"/api/v1/orders/{order['id']}/cancel")
     level_response = client.get(
-        f"/api/v1/inventory/levels/{warehouse['id']}/{product['id']}"
+        f"/api/v1/inventory/levels/{warehouse['id']}/{product['id']}",
+        headers=supplier_headers,
     )
 
     assert response.status_code == 200
@@ -321,7 +340,9 @@ def test_list_orders_by_buyer_and_status(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    buyer, supplier, product, warehouse = create_order_resources(client, db_session)
+    buyer, supplier, product, warehouse, supplier_headers = create_order_resources(
+        client, db_session
+    )
     order = create_order(
         client,
         buyer["id"],
@@ -343,8 +364,10 @@ def test_fulfill_order_consumes_reservation_and_creates_movement(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    buyer, supplier, product, warehouse = create_order_resources(client, db_session)
-    adjust_inventory(client, product["id"], warehouse["id"], 10)
+    buyer, supplier, product, warehouse, supplier_headers = create_order_resources(
+        client, db_session
+    )
+    adjust_inventory(client, product["id"], warehouse["id"], 10, supplier_headers)
     order = create_order(
         client,
         buyer["id"],
@@ -362,14 +385,20 @@ def test_fulfill_order_consumes_reservation_and_creates_movement(
 
     response = client.post(f"/api/v1/orders/{order['id']}/fulfill")
     level_response = client.get(
-        f"/api/v1/inventory/levels/{warehouse['id']}/{product['id']}"
+        f"/api/v1/inventory/levels/{warehouse['id']}/{product['id']}",
+        headers=supplier_headers,
     )
     reservation_response = client.get(
         f"/api/v1/inventory/reservations/{reservation_id}"
     )
     movements_response = client.get(
         "/api/v1/inventory/movements",
-        params={"warehouse_id": warehouse["id"], "product_id": product["id"]},
+        params={
+            "organization_id": supplier["id"],
+            "warehouse_id": warehouse["id"],
+            "product_id": product["id"],
+        },
+        headers=supplier_headers,
     )
 
     assert response.status_code == 200
@@ -392,7 +421,9 @@ def test_reject_fulfillment_for_draft_order(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    buyer, supplier, product, warehouse = create_order_resources(client, db_session)
+    buyer, supplier, product, warehouse, supplier_headers = create_order_resources(
+        client, db_session
+    )
     order = create_order(
         client,
         buyer["id"],
@@ -416,8 +447,10 @@ def test_reject_cancellation_for_fulfilled_order(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    buyer, supplier, product, warehouse = create_order_resources(client, db_session)
-    adjust_inventory(client, product["id"], warehouse["id"], 5)
+    buyer, supplier, product, warehouse, supplier_headers = create_order_resources(
+        client, db_session
+    )
+    adjust_inventory(client, product["id"], warehouse["id"], 5, supplier_headers)
     order = create_order(
         client,
         buyer["id"],
@@ -443,8 +476,10 @@ def test_order_history_records_full_lifecycle(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    buyer, supplier, product, warehouse = create_order_resources(client, db_session)
-    adjust_inventory(client, product["id"], warehouse["id"], 5)
+    buyer, supplier, product, warehouse, supplier_headers = create_order_resources(
+        client, db_session
+    )
+    adjust_inventory(client, product["id"], warehouse["id"], 5, supplier_headers)
     order = create_order(
         client,
         buyer["id"],
@@ -477,7 +512,9 @@ def test_cancelled_order_history_is_append_only_and_paginated(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    buyer, supplier, product, warehouse = create_order_resources(client, db_session)
+    buyer, supplier, product, warehouse, supplier_headers = create_order_resources(
+        client, db_session
+    )
     order = create_order(
         client,
         buyer["id"],

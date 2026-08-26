@@ -5,6 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
+from app.modules.inventory.dependencies import (
+    AuthorizedInventoryAdjustment,
+    AuthorizedInventoryLevel,
+    AuthorizedInventoryLevelList,
+    AuthorizedStockMovementList,
+)
 from app.modules.inventory.exceptions import (
     InsufficientAvailableInventoryError,
     InsufficientInventoryError,
@@ -18,9 +24,7 @@ from app.modules.inventory.exceptions import (
     InventoryWarehouseNotFoundError,
 )
 from app.modules.inventory.schemas import (
-    InventoryAdjustmentCreate,
     InventoryAdjustmentRead,
-    InventoryLevelListQuery,
     InventoryLevelListRead,
     InventoryLevelRead,
     InventoryReservationCreate,
@@ -28,7 +32,6 @@ from app.modules.inventory.schemas import (
     InventoryReservationListRead,
     InventoryReservationOperationRead,
     InventoryReservationRead,
-    StockMovementListQuery,
     StockMovementListRead,
     StockMovementRead,
 )
@@ -36,8 +39,6 @@ from app.modules.inventory.service import InventoryService
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
-InventoryFilters = Annotated[InventoryLevelListQuery, Query()]
-StockMovementFilters = Annotated[StockMovementListQuery, Query()]
 InventoryReservationFilters = Annotated[InventoryReservationListQuery, Query()]
 
 
@@ -47,17 +48,13 @@ InventoryReservationFilters = Annotated[InventoryReservationListQuery, Query()]
     status_code=status.HTTP_201_CREATED,
 )
 def adjust_inventory(
-    data: InventoryAdjustmentCreate,
+    data: AuthorizedInventoryAdjustment,
     session: DatabaseSession,
 ) -> InventoryAdjustmentRead:
     service = InventoryService(session)
 
     try:
         level, movement = service.adjust(data)
-    except InventoryProductNotFoundError as error:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found") from error
-    except InventoryWarehouseNotFoundError as error:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Warehouse not found") from error
     except InventoryProductInactiveError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "Product is inactive") from error
     except InventoryWarehouseInactiveError as error:
@@ -89,7 +86,7 @@ def adjust_inventory(
 @router.get("/levels", response_model=InventoryLevelListRead)
 def list_inventory_levels(
     session: DatabaseSession,
-    filters: InventoryFilters,
+    filters: AuthorizedInventoryLevelList,
 ) -> InventoryLevelListRead:
     levels, total = InventoryService(session).list_levels(filters)
     return InventoryLevelListRead(
@@ -105,24 +102,15 @@ def list_inventory_levels(
     response_model=InventoryLevelRead,
 )
 def get_inventory_level(
-    warehouse_id: uuid.UUID,
-    product_id: uuid.UUID,
-    session: DatabaseSession,
+    level: AuthorizedInventoryLevel,
 ) -> InventoryLevelRead:
-    try:
-        level = InventoryService(session).get_level(warehouse_id, product_id)
-    except InventoryLevelNotFoundError as error:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND,
-            "Inventory level not found",
-        ) from error
     return InventoryLevelRead.model_validate(level)
 
 
 @router.get("/movements", response_model=StockMovementListRead)
 def list_stock_movements(
     session: DatabaseSession,
-    filters: StockMovementFilters,
+    filters: AuthorizedStockMovementList,
 ) -> StockMovementListRead:
     movements, total = InventoryService(session).list_movements(filters)
     return StockMovementListRead(
