@@ -389,7 +389,8 @@ def test_fulfill_order_consumes_reservation_and_creates_movement(
         headers=supplier_headers,
     )
     reservation_response = client.get(
-        f"/api/v1/inventory/reservations/{reservation_id}"
+        f"/api/v1/inventory/reservations/{reservation_id}",
+        headers=supplier_headers,
     )
     movements_response = client.get(
         "/api/v1/inventory/movements",

@@ -150,6 +150,7 @@ def create_reservation(
     product_id: object,
     warehouse_id: object,
     quantity: int,
+    headers: dict[str, str],
     *,
     external_reference: str | None = None,
 ) -> dict[str, object]:
@@ -161,6 +162,7 @@ def create_reservation(
             "quantity": quantity,
             "external_reference": external_reference,
         },
+        headers=headers,
     )
     assert response.status_code == 201
     return response.json()
@@ -497,6 +499,7 @@ def test_create_inventory_reservation_reduces_available_quantity(
         context.product["id"],
         context.warehouse["id"],
         8,
+        context.headers,
         external_reference="cart-123",
     )
 
@@ -519,7 +522,9 @@ def test_reject_reservation_above_available_quantity(
         10,
         context.headers,
     )
-    create_reservation(client, context.product["id"], context.warehouse["id"], 6)
+    create_reservation(
+        client, context.product["id"], context.warehouse["id"], 6, context.headers
+    )
 
     response = client.post(
         "/api/v1/inventory/reservations",
@@ -528,6 +533,7 @@ def test_reject_reservation_above_available_quantity(
             "warehouse_id": context.warehouse["id"],
             "quantity": 5,
         },
+        headers=context.headers,
     )
 
     assert response.status_code == 409
@@ -547,14 +553,16 @@ def test_release_inventory_reservation_restores_availability(
         context.headers,
     )
     reservation = create_reservation(
-        client, context.product["id"], context.warehouse["id"], 4
+        client, context.product["id"], context.warehouse["id"], 4, context.headers
     )
 
     response = client.post(
-        f"/api/v1/inventory/reservations/{reservation['reservation']['id']}/release"
+        f"/api/v1/inventory/reservations/{reservation['reservation']['id']}/release",
+        headers=context.headers,
     )
     repeated_response = client.post(
-        f"/api/v1/inventory/reservations/{reservation['reservation']['id']}/release"
+        f"/api/v1/inventory/reservations/{reservation['reservation']['id']}/release",
+        headers=context.headers,
     )
 
     assert response.status_code == 200
@@ -577,11 +585,12 @@ def test_consume_inventory_reservation_updates_stock_and_creates_movement(
         context.headers,
     )
     reservation = create_reservation(
-        client, context.product["id"], context.warehouse["id"], 4
+        client, context.product["id"], context.warehouse["id"], 4, context.headers
     )
 
     response = client.post(
-        f"/api/v1/inventory/reservations/{reservation['reservation']['id']}/consume"
+        f"/api/v1/inventory/reservations/{reservation['reservation']['id']}/consume",
+        headers=context.headers,
     )
 
     assert response.status_code == 200
@@ -605,7 +614,9 @@ def test_reject_adjustment_that_would_reduce_reserved_stock(
         10,
         context.headers,
     )
-    create_reservation(client, context.product["id"], context.warehouse["id"], 8)
+    create_reservation(
+        client, context.product["id"], context.warehouse["id"], 8, context.headers
+    )
 
     response = client.post(
         "/api/v1/inventory/adjustments",
@@ -633,20 +644,23 @@ def test_get_and_filter_inventory_reservations(
     adjust_inventory(client, first_product["id"], warehouse["id"], 10, headers)
     adjust_inventory(client, second_product["id"], warehouse["id"], 10, headers)
     first_reservation = create_reservation(
-        client, first_product["id"], warehouse["id"], 2
+        client, first_product["id"], warehouse["id"], 2, headers
     )
-    create_reservation(client, second_product["id"], warehouse["id"], 3)
+    create_reservation(client, second_product["id"], warehouse["id"], 3, headers)
 
     list_response = client.get(
         "/api/v1/inventory/reservations",
         params={
+            "organization_id": organization["id"],
             "warehouse_id": warehouse["id"],
             "product_id": first_product["id"],
             "status": "active",
         },
+        headers=headers,
     )
     get_response = client.get(
-        f"/api/v1/inventory/reservations/{first_reservation['reservation']['id']}"
+        f"/api/v1/inventory/reservations/{first_reservation['reservation']['id']}",
+        headers=headers,
     )
 
     assert list_response.status_code == 200
@@ -669,6 +683,7 @@ def test_reject_non_positive_reservation_quantity(
             "warehouse_id": context.warehouse["id"],
             "quantity": 0,
         },
+        headers=context.headers,
     )
 
     assert response.status_code == 422
@@ -997,3 +1012,352 @@ def test_reject_inactive_membership_for_inventory(
     assert levels_response.json() == {"detail": "Not enough permissions"}
     assert adjust_response.status_code == 404
     assert adjust_response.json() == {"detail": "Warehouse not found"}
+
+
+def test_require_authentication_for_reservation_endpoints(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    context = create_inventory_resources(client, db_session)
+    adjust_inventory(
+        client,
+        context.product["id"],
+        context.warehouse["id"],
+        10,
+        context.headers,
+    )
+    reservation = create_reservation(
+        client,
+        context.product["id"],
+        context.warehouse["id"],
+        4,
+        context.headers,
+    )
+    reservation_id = reservation["reservation"]["id"]
+
+    create_response = client.post(
+        "/api/v1/inventory/reservations",
+        json={
+            "product_id": context.product["id"],
+            "warehouse_id": context.warehouse["id"],
+            "quantity": 1,
+        },
+    )
+    list_response = client.get(
+        "/api/v1/inventory/reservations",
+        params={"organization_id": context.organization_id},
+    )
+    get_response = client.get(f"/api/v1/inventory/reservations/{reservation_id}")
+    release_response = client.post(
+        f"/api/v1/inventory/reservations/{reservation_id}/release"
+    )
+    consume_response = client.post(
+        f"/api/v1/inventory/reservations/{reservation_id}/consume"
+    )
+
+    assert create_response.status_code == 401
+    assert list_response.status_code == 401
+    assert get_response.status_code == 401
+    assert release_response.status_code == 401
+    assert consume_response.status_code == 401
+
+
+def test_require_organization_filter_when_listing_reservations(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    organization = create_organization(client)
+    headers = create_inventory_actor(client, db_session, organization["id"])
+
+    response = client.get("/api/v1/inventory/reservations", headers=headers)
+
+    assert response.status_code == 422
+
+
+def test_reject_cross_organization_reservation_listing(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    actor_organization = create_organization(client)
+    target_organization = create_organization(client)
+    actor_headers = create_inventory_actor(
+        client,
+        db_session,
+        actor_organization["id"],
+    )
+
+    response = client.get(
+        "/api/v1/inventory/reservations",
+        params={"organization_id": target_organization["id"]},
+        headers=actor_headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Not enough permissions"}
+
+
+def test_conceal_cross_organization_reservation_write(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    target = create_inventory_resources(client, db_session)
+    adjust_inventory(
+        client,
+        target.product["id"],
+        target.warehouse["id"],
+        10,
+        target.headers,
+    )
+    actor_organization = create_organization(client)
+    actor_headers = create_inventory_actor(
+        client,
+        db_session,
+        actor_organization["id"],
+    )
+
+    response = client.post(
+        "/api/v1/inventory/reservations",
+        json={
+            "product_id": target.product["id"],
+            "warehouse_id": target.warehouse["id"],
+            "quantity": 2,
+        },
+        headers=actor_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Warehouse not found"}
+
+
+def test_conceal_cross_organization_reservation(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    target = create_inventory_resources(client, db_session)
+    adjust_inventory(
+        client,
+        target.product["id"],
+        target.warehouse["id"],
+        10,
+        target.headers,
+    )
+    reservation = create_reservation(
+        client,
+        target.product["id"],
+        target.warehouse["id"],
+        4,
+        target.headers,
+    )
+    reservation_id = reservation["reservation"]["id"]
+    actor_organization = create_organization(client)
+    actor_headers = create_inventory_actor(
+        client,
+        db_session,
+        actor_organization["id"],
+    )
+    endpoint = f"/api/v1/inventory/reservations/{reservation_id}"
+    level_endpoint = (
+        f"/api/v1/inventory/levels/{target.warehouse['id']}/{target.product['id']}"
+    )
+
+    get_response = client.get(endpoint, headers=actor_headers)
+    release_response = client.post(f"{endpoint}/release", headers=actor_headers)
+    consume_response = client.post(f"{endpoint}/consume", headers=actor_headers)
+    owner_response = client.get(endpoint, headers=target.headers)
+    level_response = client.get(level_endpoint, headers=target.headers)
+
+    assert get_response.status_code == 404
+    assert release_response.status_code == 404
+    assert consume_response.status_code == 404
+    assert get_response.json() == {"detail": "Inventory reservation not found"}
+    assert release_response.json() == {"detail": "Inventory reservation not found"}
+    assert consume_response.json() == {"detail": "Inventory reservation not found"}
+    assert owner_response.status_code == 200
+    assert owner_response.json()["status"] == "active"
+    assert level_response.json()["reserved_quantity"] == 4
+
+
+def test_exclude_other_organization_reservations_from_listing(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    actor = create_inventory_resources(client, db_session)
+    other = create_inventory_resources(client, db_session)
+    for context in (actor, other):
+        adjust_inventory(
+            client,
+            context.product["id"],
+            context.warehouse["id"],
+            10,
+            context.headers,
+        )
+        create_reservation(
+            client,
+            context.product["id"],
+            context.warehouse["id"],
+            3,
+            context.headers,
+        )
+
+    response = client.get(
+        "/api/v1/inventory/reservations",
+        params={"organization_id": actor.organization_id},
+        headers=actor.headers,
+    )
+    foreign_filter_response = client.get(
+        "/api/v1/inventory/reservations",
+        params={
+            "organization_id": actor.organization_id,
+            "warehouse_id": other.warehouse["id"],
+        },
+        headers=actor.headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert foreign_filter_response.status_code == 200
+    assert foreign_filter_response.json()["total"] == 0
+
+
+def test_allow_read_but_reject_forbidden_reservation_mutations(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    context = create_inventory_resources(client, db_session)
+    adjust_inventory(
+        client,
+        context.product["id"],
+        context.warehouse["id"],
+        10,
+        context.headers,
+    )
+    reservation = create_reservation(
+        client,
+        context.product["id"],
+        context.warehouse["id"],
+        4,
+        context.headers,
+    )
+    reservation_id = reservation["reservation"]["id"]
+    viewer_headers = create_inventory_actor(
+        client,
+        db_session,
+        context.organization_id,
+        role="viewer",
+    )
+    endpoint = f"/api/v1/inventory/reservations/{reservation_id}"
+
+    get_response = client.get(endpoint, headers=viewer_headers)
+    list_response = client.get(
+        "/api/v1/inventory/reservations",
+        params={"organization_id": context.organization_id},
+        headers=viewer_headers,
+    )
+    create_response = client.post(
+        "/api/v1/inventory/reservations",
+        json={
+            "product_id": context.product["id"],
+            "warehouse_id": context.warehouse["id"],
+            "quantity": 1,
+        },
+        headers=viewer_headers,
+    )
+    release_response = client.post(f"{endpoint}/release", headers=viewer_headers)
+    consume_response = client.post(f"{endpoint}/consume", headers=viewer_headers)
+
+    assert get_response.status_code == 200
+    assert list_response.status_code == 200
+    assert create_response.status_code == 403
+    assert release_response.status_code == 403
+    assert consume_response.status_code == 403
+    assert release_response.json() == {"detail": "Not enough permissions"}
+
+
+def test_reject_role_without_reservation_permissions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    context = create_inventory_resources(client, db_session)
+    catalog_headers = create_inventory_actor(
+        client,
+        db_session,
+        context.organization_id,
+        role="catalog_manager",
+    )
+
+    list_response = client.get(
+        "/api/v1/inventory/reservations",
+        params={"organization_id": context.organization_id},
+        headers=catalog_headers,
+    )
+    create_response = client.post(
+        "/api/v1/inventory/reservations",
+        json={
+            "product_id": context.product["id"],
+            "warehouse_id": context.warehouse["id"],
+            "quantity": 1,
+        },
+        headers=catalog_headers,
+    )
+
+    assert list_response.status_code == 403
+    assert create_response.status_code == 403
+
+
+def test_allow_warehouse_operator_reservation_workflow(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    context = create_inventory_resources(client, db_session)
+    adjust_inventory(
+        client,
+        context.product["id"],
+        context.warehouse["id"],
+        10,
+        context.headers,
+    )
+    operator_headers = create_inventory_actor(
+        client,
+        db_session,
+        context.organization_id,
+        role="warehouse_operator",
+    )
+    reservation = create_reservation(
+        client,
+        context.product["id"],
+        context.warehouse["id"],
+        4,
+        operator_headers,
+    )
+    reservation_id = reservation["reservation"]["id"]
+
+    response = client.post(
+        f"/api/v1/inventory/reservations/{reservation_id}/consume",
+        headers=operator_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reservation"]["status"] == "consumed"
+    assert response.json()["level"]["quantity"] == 6
+
+
+def test_reject_inactive_membership_for_reservations(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    context = create_inventory_resources(client, db_session)
+    inactive_headers = create_inventory_actor(
+        client,
+        db_session,
+        context.organization_id,
+        is_active=False,
+    )
+
+    list_response = client.get(
+        "/api/v1/inventory/reservations",
+        params={"organization_id": context.organization_id},
+        headers=inactive_headers,
+    )
+
+    assert list_response.status_code == 403
+    assert list_response.json() == {"detail": "Not enough permissions"}

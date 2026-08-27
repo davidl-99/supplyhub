@@ -166,6 +166,7 @@ class InventoryService:
         filters: InventoryReservationListQuery,
     ) -> tuple[list[InventoryReservation], int]:
         return self.inventory_repository.list_reservations(
+            organization_id=filters.organization_id,
             inventory_level_id=filters.inventory_level_id,
             warehouse_id=filters.warehouse_id,
             product_id=filters.product_id,

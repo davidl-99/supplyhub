@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
 from app.models.identity import User
-from app.models.inventory import InventoryLevel
+from app.models.inventory import InventoryLevel, InventoryReservation
 from app.modules.auth.dependencies import CurrentUser
 from app.modules.authorization.permissions import Permission, role_has_permission
 from app.modules.authorization.service import AuthorizationService
@@ -14,6 +14,8 @@ from app.modules.inventory.repository import InventoryRepository
 from app.modules.inventory.schemas import (
     InventoryAdjustmentCreate,
     InventoryLevelListQuery,
+    InventoryReservationCreate,
+    InventoryReservationListQuery,
     StockMovementListQuery,
 )
 from app.modules.products.repository import ProductRepository
@@ -22,6 +24,7 @@ from app.modules.warehouses.repository import WarehouseRepository
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 InventoryLevelFilters = Annotated[InventoryLevelListQuery, Query()]
 StockMovementFilters = Annotated[StockMovementListQuery, Query()]
+InventoryReservationFilters = Annotated[InventoryReservationListQuery, Query()]
 
 
 def authorize_inventory_adjustment(
@@ -82,6 +85,78 @@ def authorize_stock_movement_list(
     return filters
 
 
+def authorize_inventory_reservation_create(
+    data: InventoryReservationCreate,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+) -> InventoryReservationCreate:
+    _authorize_inventory_write(
+        session,
+        current_user,
+        data.warehouse_id,
+        data.product_id,
+        Permission.RESERVATION_CREATE,
+    )
+    return data
+
+
+def authorize_inventory_reservation_list(
+    filters: InventoryReservationFilters,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+) -> InventoryReservationListQuery:
+    _require_organization_permission(
+        session,
+        current_user,
+        filters.organization_id,
+        Permission.RESERVATION_READ,
+    )
+    return filters
+
+
+def authorize_inventory_reservation_read(
+    reservation_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+) -> InventoryReservation:
+    _authorize_reservation(
+        session,
+        current_user,
+        reservation_id,
+        Permission.RESERVATION_READ,
+    )
+    reservation = InventoryRepository(session).get_reservation(reservation_id)
+    if reservation is None:
+        raise _reservation_not_found()
+    return reservation
+
+
+def authorize_inventory_reservation_release(
+    reservation_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+) -> uuid.UUID:
+    return _authorize_reservation(
+        session,
+        current_user,
+        reservation_id,
+        Permission.RESERVATION_RELEASE,
+    )
+
+
+def authorize_inventory_reservation_consume(
+    reservation_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+) -> uuid.UUID:
+    return _authorize_reservation(
+        session,
+        current_user,
+        reservation_id,
+        Permission.RESERVATION_CONSUME,
+    )
+
+
 AuthorizedInventoryAdjustment = Annotated[
     InventoryAdjustmentCreate,
     Depends(authorize_inventory_adjustment),
@@ -97,6 +172,26 @@ AuthorizedInventoryLevel = Annotated[
 AuthorizedStockMovementList = Annotated[
     StockMovementListQuery,
     Depends(authorize_stock_movement_list),
+]
+AuthorizedInventoryReservationCreate = Annotated[
+    InventoryReservationCreate,
+    Depends(authorize_inventory_reservation_create),
+]
+AuthorizedInventoryReservationList = Annotated[
+    InventoryReservationListQuery,
+    Depends(authorize_inventory_reservation_list),
+]
+AuthorizedInventoryReservation = Annotated[
+    InventoryReservation,
+    Depends(authorize_inventory_reservation_read),
+]
+AuthorizedInventoryReservationRelease = Annotated[
+    uuid.UUID,
+    Depends(authorize_inventory_reservation_release),
+]
+AuthorizedInventoryReservationConsume = Annotated[
+    uuid.UUID,
+    Depends(authorize_inventory_reservation_consume),
 ]
 
 
@@ -179,6 +274,36 @@ def _get_authorized_inventory_level(
     return level
 
 
+def _authorize_reservation(
+    session: Session,
+    current_user: User,
+    reservation_id: uuid.UUID,
+    permission: Permission,
+) -> uuid.UUID:
+    """Authorize an operation on a reservation without loading it.
+
+    Ownership is resolved with a scalar query so that release and consume can
+    take their own ``SELECT ... FOR UPDATE`` on a session that has never seen
+    the reservation or its level. An unknown reservation and one owned by
+    another organization raise the same ``404``.
+    """
+    organization_id = InventoryRepository(session).get_reservation_organization_id(
+        reservation_id
+    )
+    if organization_id is None:
+        raise _reservation_not_found()
+
+    membership = AuthorizationService(session).get_active_membership(
+        organization_id,
+        current_user.id,
+    )
+    if membership is None:
+        raise _reservation_not_found()
+    if not role_has_permission(membership.role, permission):
+        raise _not_enough_permissions()
+    return reservation_id
+
+
 def _not_enough_permissions() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -204,4 +329,11 @@ def _inventory_level_not_found() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Inventory level not found",
+    )
+
+
+def _reservation_not_found() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Inventory reservation not found",
     )

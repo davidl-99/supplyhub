@@ -183,8 +183,32 @@ class InventoryRepository:
         )
         return self.session.scalar(statement)
 
+    def get_reservation_organization_id(
+        self,
+        reservation_id: uuid.UUID,
+    ) -> uuid.UUID | None:
+        """Resolve the owning organization without materializing any entity.
+
+        Authorization for release/consume must not load the reservation or its
+        level into the session: the service re-reads both with
+        ``SELECT ... FOR UPDATE``, and an already-identity-mapped instance
+        would come back without refreshed column values.
+        """
+        statement = (
+            select(Warehouse.organization_id)
+            .select_from(InventoryReservation)
+            .join(
+                InventoryLevel,
+                InventoryLevel.id == InventoryReservation.inventory_level_id,
+            )
+            .join(Warehouse, Warehouse.id == InventoryLevel.warehouse_id)
+            .where(InventoryReservation.id == reservation_id)
+        )
+        return self.session.scalar(statement)
+
     def list_reservations(
         self,
+        organization_id: uuid.UUID | None = None,
         inventory_level_id: uuid.UUID | None = None,
         warehouse_id: uuid.UUID | None = None,
         product_id: uuid.UUID | None = None,
@@ -194,6 +218,8 @@ class InventoryRepository:
     ) -> tuple[list[InventoryReservation], int]:
         conditions = []
 
+        if organization_id is not None:
+            conditions.append(Warehouse.organization_id == organization_id)
         if inventory_level_id is not None:
             conditions.append(
                 InventoryReservation.inventory_level_id == inventory_level_id
@@ -205,13 +231,23 @@ class InventoryRepository:
         if status is not None:
             conditions.append(InventoryReservation.status == status)
 
-        requires_level_join = warehouse_id is not None or product_id is not None
-        count_statement = select(func.count()).select_from(InventoryReservation)
-        statement = select(InventoryReservation)
-
-        if requires_level_join:
-            count_statement = count_statement.join(InventoryLevel)
-            statement = statement.join(InventoryLevel)
+        count_statement = (
+            select(func.count())
+            .select_from(InventoryReservation)
+            .join(
+                InventoryLevel,
+                InventoryLevel.id == InventoryReservation.inventory_level_id,
+            )
+            .join(Warehouse, Warehouse.id == InventoryLevel.warehouse_id)
+        )
+        statement = (
+            select(InventoryReservation)
+            .join(
+                InventoryLevel,
+                InventoryLevel.id == InventoryReservation.inventory_level_id,
+            )
+            .join(Warehouse, Warehouse.id == InventoryLevel.warehouse_id)
+        )
 
         total = self.session.scalar(count_statement.where(*conditions)) or 0
         statement = (

@@ -125,6 +125,7 @@ class InventoryReservationOperationRead(BaseModel):
 
 
 class InventoryReservationListQuery(BaseModel):
+    organization_id: uuid.UUID
     inventory_level_id: uuid.UUID | None = None
     warehouse_id: uuid.UUID | None = None
     product_id: uuid.UUID | None = None
