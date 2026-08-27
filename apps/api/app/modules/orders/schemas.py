@@ -70,6 +70,14 @@ class OrderListQuery(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="after")
+    def validate_organization_scope(self) -> Self:
+        if self.buyer_organization_id is None and self.supplier_organization_id is None:
+            raise ValueError(
+                "buyer_organization_id or supplier_organization_id is required"
+            )
+        return self
+
 
 class OrderListRead(BaseModel):
     items: list[OrderRead]

@@ -24,6 +24,23 @@ class OrderRepository:
             statement = statement.with_for_update()
         return self.session.scalar(statement)
 
+    def get_party_organization_ids(
+        self,
+        order_id: uuid.UUID,
+    ) -> tuple[uuid.UUID, uuid.UUID] | None:
+        """Resolve both party organizations without loading the order.
+
+        Authorization for the history route and for place/cancel/fulfill must
+        not materialize the order: the service re-reads it with
+        ``SELECT ... FOR UPDATE``, and an already-identity-mapped instance
+        would come back without refreshed column values.
+        """
+        statement = select(
+            Order.buyer_organization_id,
+            Order.supplier_organization_id,
+        ).where(Order.id == order_id)
+        return self.session.execute(statement).tuples().one_or_none()
+
     def list_all(
         self,
         buyer_organization_id: uuid.UUID | None = None,

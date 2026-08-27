@@ -1,10 +1,19 @@
-import uuid
 from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
+from app.modules.orders.dependencies import (
+    AuthorizedOrderCancel,
+    AuthorizedOrderCreate,
+    AuthorizedOrderFulfill,
+    AuthorizedOrderHistory,
+    AuthorizedOrderList,
+    AuthorizedOrderPlace,
+    AuthorizedOrderRead,
+    OrderHistoryFilters,
+)
 from app.modules.orders.exceptions import (
     OrderBuyerCannotBuyError,
     OrderCannotCancelError,
@@ -24,20 +33,15 @@ from app.modules.orders.exceptions import (
     OrderWarehouseUnavailableError,
 )
 from app.modules.orders.schemas import (
-    OrderCreate,
-    OrderListQuery,
     OrderListRead,
     OrderRead,
     OrderStatusEventRead,
-    OrderStatusHistoryQuery,
     OrderStatusHistoryRead,
 )
 from app.modules.orders.service import OrderService
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
-OrderFilters = Annotated[OrderListQuery, Query()]
-OrderHistoryFilters = Annotated[OrderStatusHistoryQuery, Query()]
 
 ORDER_ERROR_RESPONSES: dict[type[OrderError], tuple[int, str]] = {
     OrderNotFoundError: (status.HTTP_404_NOT_FOUND, "Order not found"),
@@ -94,7 +98,7 @@ def raise_order_http_error(error: OrderError) -> NoReturn:
 
 
 @router.post("/", response_model=OrderRead, status_code=status.HTTP_201_CREATED)
-def create_order(data: OrderCreate, session: DatabaseSession) -> OrderRead:
+def create_order(data: AuthorizedOrderCreate, session: DatabaseSession) -> OrderRead:
     try:
         order = OrderService(session).create(data)
     except OrderError as error:
@@ -103,7 +107,9 @@ def create_order(data: OrderCreate, session: DatabaseSession) -> OrderRead:
 
 
 @router.get("/", response_model=OrderListRead)
-def list_orders(session: DatabaseSession, filters: OrderFilters) -> OrderListRead:
+def list_orders(
+    session: DatabaseSession, filters: AuthorizedOrderList
+) -> OrderListRead:
     orders, total = OrderService(session).list_all(filters)
     return OrderListRead(
         items=[OrderRead.model_validate(order) for order in orders],
@@ -114,17 +120,13 @@ def list_orders(session: DatabaseSession, filters: OrderFilters) -> OrderListRea
 
 
 @router.get("/{order_id}", response_model=OrderRead)
-def get_order(order_id: uuid.UUID, session: DatabaseSession) -> OrderRead:
-    try:
-        order = OrderService(session).get_by_id(order_id)
-    except OrderError as error:
-        raise_order_http_error(error)
+def get_order(order: AuthorizedOrderRead) -> OrderRead:
     return OrderRead.model_validate(order)
 
 
 @router.get("/{order_id}/history", response_model=OrderStatusHistoryRead)
 def list_order_status_history(
-    order_id: uuid.UUID,
+    order_id: AuthorizedOrderHistory,
     session: DatabaseSession,
     filters: OrderHistoryFilters,
 ) -> OrderStatusHistoryRead:
@@ -141,7 +143,7 @@ def list_order_status_history(
 
 
 @router.post("/{order_id}/place", response_model=OrderRead)
-def place_order(order_id: uuid.UUID, session: DatabaseSession) -> OrderRead:
+def place_order(order_id: AuthorizedOrderPlace, session: DatabaseSession) -> OrderRead:
     try:
         order = OrderService(session).place(order_id)
     except OrderError as error:
@@ -150,7 +152,9 @@ def place_order(order_id: uuid.UUID, session: DatabaseSession) -> OrderRead:
 
 
 @router.post("/{order_id}/cancel", response_model=OrderRead)
-def cancel_order(order_id: uuid.UUID, session: DatabaseSession) -> OrderRead:
+def cancel_order(
+    order_id: AuthorizedOrderCancel, session: DatabaseSession
+) -> OrderRead:
     try:
         order = OrderService(session).cancel(order_id)
     except OrderError as error:
@@ -159,7 +163,9 @@ def cancel_order(order_id: uuid.UUID, session: DatabaseSession) -> OrderRead:
 
 
 @router.post("/{order_id}/fulfill", response_model=OrderRead)
-def fulfill_order(order_id: uuid.UUID, session: DatabaseSession) -> OrderRead:
+def fulfill_order(
+    order_id: AuthorizedOrderFulfill, session: DatabaseSession
+) -> OrderRead:
     try:
         order = OrderService(session).fulfill(order_id)
     except OrderError as error:
