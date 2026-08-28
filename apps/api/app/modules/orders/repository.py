@@ -21,7 +21,9 @@ class OrderRepository:
     ) -> Order | None:
         statement = select(Order).where(Order.id == order_id)
         if for_update:
-            statement = statement.with_for_update()
+            statement = statement.with_for_update().execution_options(
+                populate_existing=True
+            )
         return self.session.scalar(statement)
 
     def get_party_organization_ids(

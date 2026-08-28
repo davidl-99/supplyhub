@@ -3,10 +3,12 @@ from decimal import Decimal
 from typing import NamedTuple
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token
 from app.models.identity import OrganizationMembership, User
+from app.modules.orders.repository import OrderRepository
 
 
 class OrderContext(NamedTuple):
@@ -216,6 +218,47 @@ def read_level(client: TestClient, context: OrderContext) -> dict[str, object]:
     )
     assert response.status_code == 200
     return response.json()
+
+
+def test_get_order_for_update_refreshes_stale_identity_map_state(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    """``SELECT ... FOR UPDATE`` must be authoritative even when the order
+    is already present, with stale attributes, in the session's identity
+    map.
+
+    Without ``populate_existing=True`` on the locking query, SQLAlchemy
+    would return the already-cached Python object as-is: the row would be
+    locked at the database level, but the caller would still be looking at
+    the pre-lock values, silently defeating the point of the lock.
+    """
+    context = create_order_resources(client, db_session)
+    order = create_order(
+        client,
+        context.buyer["id"],
+        context.supplier["id"],
+        [order_line(context, 1)],
+        context.buyer_headers,
+    )
+    order_id = uuid.UUID(str(order["id"]))
+
+    repository = OrderRepository(db_session)
+    draft = repository.get_by_id(order_id)
+    assert draft is not None
+    assert draft.status == "draft"
+
+    # Change the row without going through the ORM, simulating a concurrent
+    # transaction that committed while this object sat in the identity map.
+    db_session.execute(
+        text("UPDATE orders SET status = :status WHERE id = :id"),
+        {"status": "cancelled", "id": order_id},
+    )
+
+    locked = repository.get_by_id(order_id, for_update=True)
+
+    assert locked is draft
+    assert locked.status == "cancelled"
 
 
 def test_create_draft_order_with_price_snapshot(

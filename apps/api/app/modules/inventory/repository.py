@@ -39,6 +39,7 @@ class InventoryRepository:
                 InventoryLevel.product_id == product_id,
             )
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         level = self.session.scalar(level_statement)
 
@@ -70,6 +71,7 @@ class InventoryRepository:
                 InventoryLevel.product_id == product_id,
             )
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return self.session.scalar(statement)
 
@@ -172,7 +174,9 @@ class InventoryRepository:
             InventoryReservation.id == reservation_id
         )
         if for_update:
-            statement = statement.with_for_update()
+            statement = statement.with_for_update().execution_options(
+                populate_existing=True
+            )
         return self.session.scalar(statement)
 
     def lock_level_by_id(self, inventory_level_id: uuid.UUID) -> InventoryLevel | None:
@@ -180,6 +184,7 @@ class InventoryRepository:
             select(InventoryLevel)
             .where(InventoryLevel.id == inventory_level_id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return self.session.scalar(statement)
 

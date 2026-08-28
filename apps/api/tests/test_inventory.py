@@ -4,10 +4,12 @@ from typing import NamedTuple
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token
 from app.models.identity import OrganizationMembership, User
+from app.modules.inventory.repository import InventoryRepository
 
 
 class InventoryContext(NamedTuple):
@@ -211,6 +213,48 @@ def test_adjust_inventory_updates_existing_level(
 
     assert body["level"]["quantity"] == 15
     assert body["movement"]["resulting_quantity"] == 15
+
+
+def test_lock_level_refreshes_stale_identity_map_state(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    """``SELECT ... FOR UPDATE`` must be authoritative even when the level
+    is already present, with stale attributes, in the session's identity
+    map.
+
+    Without ``populate_existing=True`` on the locking query, SQLAlchemy
+    would return the already-cached Python object as-is: the row would be
+    locked at the database level, but the caller would still be looking at
+    the pre-lock values, silently defeating the point of the lock.
+    """
+    context = create_inventory_resources(client, db_session)
+    adjust_inventory(
+        client, context.product["id"], context.warehouse["id"], 10, context.headers
+    )
+
+    repository = InventoryRepository(db_session)
+    level = repository.get_level(
+        uuid.UUID(str(context.warehouse["id"])),
+        uuid.UUID(str(context.product["id"])),
+    )
+    assert level is not None
+    assert level.quantity == 10
+
+    # Change the row without going through the ORM, simulating a concurrent
+    # transaction that committed while this object sat in the identity map.
+    db_session.execute(
+        text("UPDATE inventory_levels SET quantity = :quantity WHERE id = :id"),
+        {"quantity": 999, "id": level.id},
+    )
+
+    locked_level = repository.lock_level(
+        uuid.UUID(str(context.warehouse["id"])),
+        uuid.UUID(str(context.product["id"])),
+    )
+
+    assert locked_level is level
+    assert locked_level.quantity == 999
 
 
 def test_reject_adjustment_that_would_make_inventory_negative(
