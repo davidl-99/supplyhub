@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
-from app.models.identity import OrganizationMembership
+from app.models.identity import OrganizationMembership, User
 from app.modules.auth.dependencies import CurrentUser
 from app.modules.authorization.permissions import Permission, role_has_permission
 from app.modules.authorization.service import AuthorizationService
@@ -53,6 +53,24 @@ ActiveMembership = Annotated[
     OrganizationMembership,
     Depends(get_active_membership),
 ]
+
+
+def require_organization_permission(
+    session: Session,
+    current_user: User,
+    organization_id: uuid.UUID,
+    permission: Permission,
+) -> None:
+    membership = AuthorizationService(session).get_membership_with_permission(
+        organization_id,
+        current_user.id,
+        permission,
+    )
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
 
 
 def require_permission(

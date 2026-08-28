@@ -8,6 +8,7 @@ from app.db.session import get_db_session
 from app.models.identity import User
 from app.models.order import Order
 from app.modules.auth.dependencies import CurrentUser
+from app.modules.authorization.dependencies import require_organization_permission
 from app.modules.authorization.permissions import Permission, role_has_permission
 from app.modules.authorization.service import AuthorizationService
 from app.modules.orders.repository import OrderRepository
@@ -29,7 +30,7 @@ def authorize_order_create(
     current_user: CurrentUser,
     session: DatabaseSession,
 ) -> OrderCreate:
-    _require_organization_permission(
+    require_organization_permission(
         session,
         current_user,
         data.buyer_organization_id,
@@ -157,21 +158,6 @@ AuthorizedOrderFulfill = Annotated[
     uuid.UUID,
     Depends(authorize_order_fulfill),
 ]
-
-
-def _require_organization_permission(
-    session: Session,
-    current_user: User,
-    organization_id: uuid.UUID,
-    permission: Permission,
-) -> None:
-    membership = AuthorizationService(session).get_membership_with_permission(
-        organization_id,
-        current_user.id,
-        permission,
-    )
-    if membership is None:
-        raise _not_enough_permissions()
 
 
 def _require_any_organization_permission(

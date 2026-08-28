@@ -8,6 +8,7 @@ from app.db.session import get_db_session
 from app.models.identity import User
 from app.models.inventory import InventoryLevel, InventoryReservation
 from app.modules.auth.dependencies import CurrentUser
+from app.modules.authorization.dependencies import require_organization_permission
 from app.modules.authorization.permissions import Permission, role_has_permission
 from app.modules.authorization.service import AuthorizationService
 from app.modules.inventory.repository import InventoryRepository
@@ -47,7 +48,7 @@ def authorize_inventory_level_list(
     current_user: CurrentUser,
     session: DatabaseSession,
 ) -> InventoryLevelListQuery:
-    _require_organization_permission(
+    require_organization_permission(
         session,
         current_user,
         filters.organization_id,
@@ -76,7 +77,7 @@ def authorize_stock_movement_list(
     current_user: CurrentUser,
     session: DatabaseSession,
 ) -> StockMovementListQuery:
-    _require_organization_permission(
+    require_organization_permission(
         session,
         current_user,
         filters.organization_id,
@@ -105,7 +106,7 @@ def authorize_inventory_reservation_list(
     current_user: CurrentUser,
     session: DatabaseSession,
 ) -> InventoryReservationListQuery:
-    _require_organization_permission(
+    require_organization_permission(
         session,
         current_user,
         filters.organization_id,
@@ -193,21 +194,6 @@ AuthorizedInventoryReservationConsume = Annotated[
     uuid.UUID,
     Depends(authorize_inventory_reservation_consume),
 ]
-
-
-def _require_organization_permission(
-    session: Session,
-    current_user: User,
-    organization_id: uuid.UUID,
-    permission: Permission,
-) -> None:
-    membership = AuthorizationService(session).get_membership_with_permission(
-        organization_id,
-        current_user.id,
-        permission,
-    )
-    if membership is None:
-        raise _not_enough_permissions()
 
 
 def _authorize_inventory_write(
