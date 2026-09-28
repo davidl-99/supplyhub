@@ -7,12 +7,33 @@ from app.core.security import create_access_token
 from app.models.identity import OrganizationMembership, User
 
 
+def bootstrap_admin_headers(client: TestClient) -> dict[str, str]:
+    """Create a user whose only purpose is to own a new organization.
+
+    Organization creation requires an authenticated caller and makes them the
+    first administrator (ADR 0006). These tests are about warehouses, not
+    onboarding, so they bootstrap a throwaway owner and seed the actor they
+    actually exercise separately.
+    """
+    response = client.post(
+        "/api/v1/users/",
+        json={
+            "email": f"warehouse-bootstrap-{uuid.uuid4().hex}@example.com",
+            "full_name": "Warehouse Bootstrap Administrator",
+            "password": "correct-horse-battery-staple",
+        },
+    )
+    assert response.status_code == 201
+    return authorization_headers(response.json()["id"])
+
+
 def create_organization(
     client: TestClient,
     *,
     name: str = "Warehouse Organization",
     slug: str | None = None,
     organization_type: str = "supplier",
+    headers: dict[str, str] | None = None,
 ) -> dict[str, object]:
     organization_slug = slug or f"warehouse-{uuid.uuid4().hex}"
     response = client.post(
@@ -22,6 +43,7 @@ def create_organization(
             "slug": organization_slug,
             "organization_type": organization_type,
         },
+        headers=headers or bootstrap_admin_headers(client),
     )
     assert response.status_code == 201
     return response.json()
@@ -213,10 +235,14 @@ def test_reject_warehouse_for_inactive_organization(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    organization = create_organization(client)
+    owner_headers = bootstrap_admin_headers(client)
+    organization = create_organization(client, headers=owner_headers)
     headers = create_warehouse_actor(client, db_session, organization["id"])
 
-    client.post(f"/api/v1/organizations/{organization['id']}/deactivate")
+    client.post(
+        f"/api/v1/organizations/{organization['id']}/deactivate",
+        headers=owner_headers,
+    )
     inactive_response = client.post(
         "/api/v1/warehouses/",
         json={

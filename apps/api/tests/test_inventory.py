@@ -19,6 +19,26 @@ class InventoryContext(NamedTuple):
     headers: dict[str, str]
 
 
+def bootstrap_admin_headers(client: TestClient) -> dict[str, str]:
+    """Create a user whose only purpose is to own a new organization.
+
+    Organization creation requires an authenticated caller and makes them the
+    first administrator (ADR 0006). These tests are about inventory, not
+    onboarding, so they bootstrap a throwaway owner and seed the actor they
+    actually exercise separately.
+    """
+    response = client.post(
+        "/api/v1/users/",
+        json={
+            "email": f"inventory-bootstrap-{uuid.uuid4().hex}@example.com",
+            "full_name": "Inventory Bootstrap Administrator",
+            "password": "correct-horse-battery-staple",
+        },
+    )
+    assert response.status_code == 201
+    return authorization_headers(response.json()["id"])
+
+
 def create_organization(client: TestClient) -> dict[str, object]:
     response = client.post(
         "/api/v1/organizations/",
@@ -26,6 +46,7 @@ def create_organization(client: TestClient) -> dict[str, object]:
             "name": "Inventory Organization",
             "slug": f"inventory-{uuid.uuid4().hex}",
         },
+        headers=bootstrap_admin_headers(client),
     )
     assert response.status_code == 201
     return response.json()

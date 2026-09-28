@@ -25,7 +25,9 @@ from app.modules.identity.schemas import (
     MembershipUpdate,
     UserCreate,
 )
+from app.modules.organizations.exceptions import OrganizationSlugAlreadyExistsError
 from app.modules.organizations.repository import OrganizationRepository
+from app.modules.organizations.schemas import OrganizationCreate
 
 
 class IdentityService:
@@ -54,6 +56,48 @@ class IdentityService:
         if user is None:
             raise UserNotFoundError
         return user
+
+    def create_organization_with_first_admin(
+        self,
+        creator: User,
+        data: OrganizationCreate,
+    ) -> Organization:
+        """Create an organization and its first administrator atomically.
+
+        Tenant onboarding is the one operation that cannot require an existing
+        membership, because the organization it authorizes against does not
+        exist yet. Both rows are written in a single transaction so an
+        organization can never exist without an administrator, which would
+        leave it unadministrable and violate the last-active-administrator
+        invariant from birth. See ADR 0006.
+        """
+        if self.organization_repository.get_by_slug(data.slug) is not None:
+            raise OrganizationSlugAlreadyExistsError
+
+        organization = Organization(
+            name=data.name,
+            slug=data.slug,
+            organization_type=data.organization_type,
+        )
+        self.organization_repository.add(organization)
+
+        # No ORM relationship links the two mappers, so the unit of work would
+        # otherwise order the membership insert first and violate its foreign
+        # key. Flushing is not committing: both inserts stay in one
+        # transaction, and a later failure rolls back the organization too.
+        self.session.flush()
+
+        self.repository.add_membership(
+            OrganizationMembership(
+                organization_id=organization.id,
+                user_id=creator.id,
+                role="organization_admin",
+            )
+        )
+        self._commit(OrganizationSlugAlreadyExistsError)
+
+        self.session.refresh(organization)
+        return organization
 
     def create_membership(
         self,

@@ -5,6 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
+from app.models.identity import OrganizationMembership
+from app.modules.auth.dependencies import CurrentUser
+from app.modules.authorization.dependencies import require_permission
+from app.modules.authorization.permissions import Permission
+from app.modules.identity.service import IdentityService
 from app.modules.organizations.exceptions import (
     OrganizationNotFoundError,
     OrganizationSlugAlreadyExistsError,
@@ -28,6 +33,18 @@ DatabaseSession = Annotated[
     Session,
     Depends(get_db_session),
 ]
+OrganizationReader = Annotated[
+    OrganizationMembership,
+    Depends(require_permission(Permission.ORGANIZATION_READ)),
+]
+OrganizationUpdater = Annotated[
+    OrganizationMembership,
+    Depends(require_permission(Permission.ORGANIZATION_UPDATE)),
+]
+OrganizationDeactivator = Annotated[
+    OrganizationMembership,
+    Depends(require_permission(Permission.ORGANIZATION_DEACTIVATE)),
+]
 
 
 @router.post(
@@ -37,12 +54,22 @@ DatabaseSession = Annotated[
 )
 def create_organization(
     data: OrganizationCreate,
+    current_user: CurrentUser,
     session: DatabaseSession,
 ) -> OrganizationRead:
-    service = OrganizationService(session)
+    """Onboard a new tenant, making the caller its first administrator.
+
+    Authentication is the only requirement: there is no organization yet to
+    hold a membership in. This creates a new tenant and never grants access to
+    an existing one. See ADR 0006.
+    """
+    service = IdentityService(session)
 
     try:
-        organization = service.create(data)
+        organization = service.create_organization_with_first_admin(
+            current_user,
+            data,
+        )
     except OrganizationSlugAlreadyExistsError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -57,10 +84,11 @@ def create_organization(
     response_model=list[OrganizationRead],
 )
 def list_organizations(
+    current_user: CurrentUser,
     session: DatabaseSession,
 ) -> list[OrganizationRead]:
     service = OrganizationService(session)
-    organizations = service.list_all()
+    organizations = service.list_for_user(current_user.id)
 
     return [
         OrganizationRead.model_validate(organization) for organization in organizations
@@ -74,6 +102,7 @@ def list_organizations(
 def get_organization(
     organization_id: uuid.UUID,
     session: DatabaseSession,
+    _authorized_membership: OrganizationReader,
 ) -> OrganizationRead:
     service = OrganizationService(session)
 
@@ -96,6 +125,7 @@ def update_organization(
     organization_id: uuid.UUID,
     data: OrganizationUpdate,
     session: DatabaseSession,
+    _authorized_membership: OrganizationUpdater,
 ) -> OrganizationRead:
     service = OrganizationService(session)
 
@@ -130,6 +160,7 @@ def update_organization(
 def deactivate_organization(
     organization_id: uuid.UUID,
     session: DatabaseSession,
+    _authorized_membership: OrganizationDeactivator,
 ) -> OrganizationRead:
     service = OrganizationService(session)
 

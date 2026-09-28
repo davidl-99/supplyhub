@@ -10,35 +10,13 @@ from app.modules.organizations.exceptions import (
     OrganizationTypeCannotBeNarrowedError,
 )
 from app.modules.organizations.repository import OrganizationRepository
-from app.modules.organizations.schemas import (
-    OrganizationCreate,
-    OrganizationUpdate,
-)
+from app.modules.organizations.schemas import OrganizationUpdate
 
 
 class OrganizationService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.repository = OrganizationRepository(session)
-
-    def create(self, data: OrganizationCreate) -> Organization:
-        existing_organization = self.repository.get_by_slug(data.slug)
-
-        if existing_organization is not None:
-            raise OrganizationSlugAlreadyExistsError
-
-        organization = Organization(
-            name=data.name,
-            slug=data.slug,
-            organization_type=data.organization_type,
-        )
-
-        self.repository.add(organization)
-        self._commit()
-
-        self.session.refresh(organization)
-
-        return organization
 
     def get_by_id(
         self,
@@ -51,8 +29,8 @@ class OrganizationService:
 
         return organization
 
-    def list_all(self) -> list[Organization]:
-        return self.repository.list_all()
+    def list_for_user(self, user_id: uuid.UUID) -> list[Organization]:
+        return self.repository.list_for_user(user_id)
 
     def update(
         self,

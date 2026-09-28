@@ -17,16 +17,38 @@ def build_organization_payload() -> dict[str, str]:
     }
 
 
+def bootstrap_admin_headers(client: TestClient) -> dict[str, str]:
+    """Create a user whose only purpose is to own a new organization.
+
+    Organization creation requires an authenticated caller and makes them the
+    first administrator (ADR 0006). These tests are about products, not
+    onboarding, so they bootstrap a throwaway owner and seed the actor they
+    actually exercise separately.
+    """
+    response = client.post(
+        "/api/v1/users/",
+        json={
+            "email": f"product-bootstrap-{uuid.uuid4().hex}@example.com",
+            "full_name": "Product Bootstrap Administrator",
+            "password": "correct-horse-battery-staple",
+        },
+    )
+    assert response.status_code == 201
+    return authorization_headers(response.json()["id"])
+
+
 def create_organization(
     client: TestClient,
     *,
     organization_type: str = "supplier",
+    headers: dict[str, str] | None = None,
 ) -> dict[str, object]:
     payload = build_organization_payload()
     payload["organization_type"] = organization_type
     response = client.post(
         "/api/v1/organizations/",
         json=payload,
+        headers=headers or bootstrap_admin_headers(client),
     )
 
     assert response.status_code == 201
@@ -228,12 +250,14 @@ def test_reject_product_for_inactive_organization(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    organization = create_organization(client)
+    owner_headers = bootstrap_admin_headers(client)
+    organization = create_organization(client, headers=owner_headers)
     organization_id = str(organization["id"])
     headers = create_product_actor(client, db_session, organization_id)
 
     deactivate_response = client.post(
         f"/api/v1/organizations/{organization_id}/deactivate",
+        headers=owner_headers,
     )
 
     response = client.post(

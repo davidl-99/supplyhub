@@ -36,6 +36,7 @@ def create_user(
 def create_organization(
     client: TestClient,
     organization_type: str,
+    headers: dict[str, str],
 ) -> dict[str, object]:
     response = client.post(
         "/api/v1/organizations/",
@@ -44,6 +45,7 @@ def create_organization(
             "slug": f"identity-{organization_type}-{uuid.uuid4().hex}",
             "organization_type": organization_type,
         },
+        headers=headers,
     )
     assert response.status_code == 201
     return response.json()
@@ -90,19 +92,36 @@ def seed_membership(
     return membership
 
 
-def create_organization_admin(
+def create_organization_with_admin(
     client: TestClient,
+    organization_type: str,
+) -> tuple[dict[str, object], dict[str, object], dict[str, str]]:
+    """Onboard an organization through its own first administrator.
+
+    Creating an organization now makes the caller its `organization_admin`
+    (ADR 0006), so these tests no longer seed that membership by hand — doing
+    so would leave the organization with two administrators and mask the
+    last-active-administrator invariant.
+    """
+    administrator = create_user(client)
+    headers = authorization_headers(administrator["id"])
+    organization = create_organization(client, organization_type, headers)
+    return organization, administrator, headers
+
+
+def fetch_membership(
     db_session: Session,
     organization_id: object,
-) -> dict[str, str]:
-    administrator = create_user(client)
-    seed_membership(
-        db_session,
-        organization_id,
-        administrator["id"],
-        "organization_admin",
+    user_id: object,
+) -> OrganizationMembership:
+    membership = db_session.scalar(
+        select(OrganizationMembership).where(
+            OrganizationMembership.organization_id == uuid.UUID(str(organization_id)),
+            OrganizationMembership.user_id == uuid.UUID(str(user_id)),
+        )
     )
-    return authorization_headers(administrator["id"])
+    assert membership is not None
+    return membership
 
 
 def test_create_user_hashes_password_and_hides_hash(
@@ -162,8 +181,7 @@ def test_create_and_list_membership(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    organization = create_organization(client, "supplier")
-    headers = create_organization_admin(client, db_session, organization["id"])
+    organization, _, headers = create_organization_with_admin(client, "supplier")
     user = create_user(client)
     membership = create_membership(
         client,
@@ -191,8 +209,7 @@ def test_reject_duplicate_membership(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    organization = create_organization(client, "supplier")
-    headers = create_organization_admin(client, db_session, organization["id"])
+    organization, _, headers = create_organization_with_admin(client, "supplier")
     user = create_user(client)
     create_membership(client, organization["id"], user["id"], "viewer", headers)
 
@@ -218,8 +235,10 @@ def test_reject_incompatible_membership_role(
     organization_type: str,
     role: str,
 ) -> None:
-    organization = create_organization(client, organization_type)
-    headers = create_organization_admin(client, db_session, organization["id"])
+    organization, _, headers = create_organization_with_admin(
+        client,
+        organization_type,
+    )
     user = create_user(client)
 
     response = client.post(
@@ -238,8 +257,7 @@ def test_update_and_deactivate_membership(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    organization = create_organization(client, "both")
-    headers = create_organization_admin(client, db_session, organization["id"])
+    organization, _, headers = create_organization_with_admin(client, "both")
     user = create_user(client)
     membership = create_membership(
         client,
@@ -268,8 +286,7 @@ def test_paginate_memberships(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    organization = create_organization(client, "supplier")
-    headers = create_organization_admin(client, db_session, organization["id"])
+    organization, _, headers = create_organization_with_admin(client, "supplier")
     for _ in range(2):
         user = create_user(client)
         create_membership(
@@ -295,7 +312,7 @@ def test_membership_creation_requires_authentication(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    organization = create_organization(client, "supplier")
+    organization, _, _ = create_organization_with_admin(client, "supplier")
     target_user = create_user(client)
 
     response = client.post(
@@ -315,7 +332,7 @@ def test_membership_creation_requires_authentication(
 
 
 def test_reject_user_without_organization_membership(client: TestClient) -> None:
-    organization = create_organization(client, "supplier")
+    organization, _, _ = create_organization_with_admin(client, "supplier")
     user = create_user(client)
 
     response = client.get(
@@ -331,7 +348,7 @@ def test_reject_inactive_organization_membership(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    organization = create_organization(client, "supplier")
+    organization, _, _ = create_organization_with_admin(client, "supplier")
     user = create_user(client)
     seed_membership(
         db_session,
@@ -354,7 +371,7 @@ def test_reject_membership_without_required_permission(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    organization = create_organization(client, "supplier")
+    organization, _, _ = create_organization_with_admin(client, "supplier")
     user = create_user(client)
     seed_membership(
         db_session,
@@ -376,16 +393,9 @@ def test_reject_cross_organization_membership_mutation(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    actor_organization = create_organization(client, "supplier")
-    target_organization = create_organization(client, "supplier")
-    actor = create_user(client)
+    actor_organization, actor, _ = create_organization_with_admin(client, "supplier")
+    target_organization, _, _ = create_organization_with_admin(client, "supplier")
     target_user = create_user(client)
-    seed_membership(
-        db_session,
-        actor_organization["id"],
-        actor["id"],
-        "organization_admin",
-    )
     target_membership = seed_membership(
         db_session,
         target_organization["id"],
@@ -411,16 +421,12 @@ def test_reject_removing_last_active_administrator(
     db_session: Session,
     operation: str,
 ) -> None:
-    organization = create_organization(client, "supplier")
-    administrator = create_user(client)
-    membership = seed_membership(
-        db_session,
-        organization["id"],
-        administrator["id"],
-        "organization_admin",
+    organization, administrator, headers = create_organization_with_admin(
+        client,
+        "supplier",
     )
+    membership = fetch_membership(db_session, organization["id"], administrator["id"])
     endpoint = f"/api/v1/organizations/{organization['id']}/memberships/{membership.id}"
-    headers = authorization_headers(administrator["id"])
 
     if operation == "demote":
         response = client.patch(endpoint, json={"role": "viewer"}, headers=headers)
@@ -442,14 +448,15 @@ def test_allow_administrator_to_remove_own_access_when_another_admin_exists(
     db_session: Session,
     operation: str,
 ) -> None:
-    organization = create_organization(client, "supplier")
-    acting_administrator = create_user(client)
+    organization, acting_administrator, headers = create_organization_with_admin(
+        client,
+        "supplier",
+    )
     other_administrator = create_user(client)
-    acting_membership = seed_membership(
+    acting_membership = fetch_membership(
         db_session,
         organization["id"],
         acting_administrator["id"],
-        "organization_admin",
     )
     seed_membership(
         db_session,
@@ -460,7 +467,6 @@ def test_allow_administrator_to_remove_own_access_when_another_admin_exists(
     endpoint = (
         f"/api/v1/organizations/{organization['id']}/memberships/{acting_membership.id}"
     )
-    headers = authorization_headers(acting_administrator["id"])
 
     if operation == "demote":
         response = client.patch(endpoint, json={"role": "viewer"}, headers=headers)
