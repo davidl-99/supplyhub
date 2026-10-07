@@ -177,6 +177,29 @@ def test_reject_invalid_user_credentials(
     assert response.status_code == 422
 
 
+def test_user_records_are_not_readable_by_id(client: TestClient) -> None:
+    """A bare user ID must never disclose another user's email or name.
+
+    The by-ID lookup was removed (ADR 0007); `/auth/me` is the only way to
+    read a user record, and it only ever returns the caller's own.
+    """
+    caller = create_user(client)
+    target = create_user(client)
+    caller_headers = authorization_headers(caller["id"])
+
+    attempts = [
+        (target["id"], {}),
+        (target["id"], caller_headers),
+        (caller["id"], caller_headers),
+    ]
+    for user_id, headers in attempts:
+        response = client.get(f"/api/v1/users/{user_id}", headers=headers)
+
+        assert response.status_code == 404
+        assert str(target["email"]) not in response.text
+        assert str(caller["email"]) not in response.text
+
+
 def test_create_and_list_membership(
     client: TestClient,
     db_session: Session,

@@ -115,15 +115,6 @@ def create_user(data: UserCreate, session: DatabaseSession) -> UserRead:
     return UserRead.model_validate(user)
 
 
-@users_router.get("/{user_id}", response_model=UserRead)
-def get_user(user_id: uuid.UUID, session: DatabaseSession) -> UserRead:
-    try:
-        user = IdentityService(session).get_user(user_id)
-    except IdentityError as error:
-        raise_identity_http_error(error)
-    return UserRead.model_validate(user)
-
-
 @memberships_router.post(
     "/",
     response_model=MembershipRead,
